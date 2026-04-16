@@ -113,3 +113,20 @@ func (p *Pool) Stop() {
 	})
 }
 
+// Backoff returns the configured rate-limit backoff duration.
+func (p *Pool) Backoff() time.Duration {
+	return p.cfg.RateLimitBackoff
+}
+
+// StartProbeLoop starts the background probe goroutine.
+// It is called by main.go after pool construction.
+func (p *Pool) StartProbeLoop() {
+	go p.runProbeLoop()
+}
+
+// ProbeAll immediately probes all unavailable upstreams.
+// It is exported for use in tests.
+func (p *Pool) ProbeAll() {
+	p.probeAll()
+}
+
