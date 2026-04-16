@@ -616,22 +616,25 @@ No missing dependencies. All required packages are already in the module graph.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Pool.Select() signature change scope**
    - What we know: 2 call sites exist (`handleRelay`, `handleAnthropicRelay` in relay.go); both must be updated.
    - What's unclear: Whether the allowed upstream list should be read from the DB in `authMiddleware` (one DB round-trip per request) or cached in memory (adds invalidation complexity).
    - Recommendation: Read from DB in `authMiddleware` — it's already doing a DB lookup for the key row; add `AllowedUpstreams` to the existing query. Store the full `AccessKey` struct in Gin context (not just `keyID`) to avoid a second DB round-trip in `limitMiddleware`.
+   - RESOLVED: Store full `AccessKey` struct in Gin context via `authMiddleware`; both relay.go and anthropic.go call sites updated to pass `accessKey.AllowedUpstreams`.
 
 2. **PATCH /api/keys/:id — handling `allowed_upstreams: []` (reset to unrestricted)**
    - What we know: Empty JSON array `[]` marshals to `"[]"` not `""`. The DB canonical form for "unrestricted" is `""`.
    - What's unclear: Should PATCH with `"allowed_upstreams": []` reset to unrestricted or be ignored as "no change"?
    - Recommendation: Treat explicit `[]` in PATCH as "reset to unrestricted" — store `""`. Use a presence-check (JSON decoder with `json.Number` or a custom type) to distinguish "field absent" from "field present but empty".
+   - RESOLVED: Explicit `[]` in PATCH stores `""` (unrestricted). `patchKeyRequest` uses pointer fields (`*string`) to distinguish absent vs. present-but-empty.
 
 3. **`GET /api/upstreams` — what data to return**
    - What we know: D-16 includes this endpoint; portal and CLI use it.
    - What's unclear: What health state fields to expose — pool availability, cooldown timer remaining, last error?
    - Recommendation: Return `{name, base_url, enabled, available, model_override}` from pool entries. Do not expose API keys. Add `available bool` from pool's internal state. The pool needs a `List()` method that returns non-sensitive entries.
+   - RESOLVED: `pool.List()` returns `[]UpstreamInfo{Name, BaseURL, Enabled, Available}` (no API keys). `handleListUpstreams` calls `pool.List()` and returns the array.
 
 ---
 
