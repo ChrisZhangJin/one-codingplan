@@ -46,6 +46,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("init pool: %v", err)
 	}
+	for _, u := range cfg.Upstreams {
+		if u.ModelOverride != "" {
+			p.SetModelOverride(u.Name, u.ModelOverride)
+		}
+	}
 	p.StartProbeLoop()
 	defer p.Stop()
 
