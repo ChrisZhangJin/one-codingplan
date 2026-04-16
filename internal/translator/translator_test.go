@@ -268,3 +268,200 @@ func TestAnthropicToOpenAI_Stream(t *testing.T) {
 		t.Error("expected stream=true")
 	}
 }
+
+func TestOpenAIToAnthropic_Text(t *testing.T) {
+	resp := &OpenAIResponse{
+		ID:    "chatcmpl-123",
+		Model: "qwen-max",
+		Choices: []OpenAIChoice{
+			{
+				Message:      OpenAIMessage{Role: "assistant", Content: "Hello"},
+				FinishReason: "stop",
+			},
+		},
+		Usage: OpenAIUsage{PromptTokens: 10, CompletionTokens: 5},
+	}
+	out, err := OpenAIToAnthropic(resp, "claude-opus-4-5")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Type != "message" {
+		t.Errorf("expected type=message, got %q", out.Type)
+	}
+	if out.Role != "assistant" {
+		t.Errorf("expected role=assistant, got %q", out.Role)
+	}
+	if out.Model != "claude-opus-4-5" {
+		t.Errorf("expected model=claude-opus-4-5 (D-03), got %q", out.Model)
+	}
+	if out.StopReason != "end_turn" {
+		t.Errorf("expected stop_reason=end_turn, got %q", out.StopReason)
+	}
+	if out.Usage.InputTokens != 10 {
+		t.Errorf("expected input_tokens=10, got %d", out.Usage.InputTokens)
+	}
+	if out.Usage.OutputTokens != 5 {
+		t.Errorf("expected output_tokens=5, got %d", out.Usage.OutputTokens)
+	}
+	if len(out.Content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(out.Content))
+	}
+	if out.Content[0].Type != "text" {
+		t.Errorf("expected content[0].type=text, got %q", out.Content[0].Type)
+	}
+	if out.Content[0].Text != "Hello" {
+		t.Errorf("expected content[0].text=Hello, got %q", out.Content[0].Text)
+	}
+}
+
+func TestOpenAIToAnthropic_ToolUse(t *testing.T) {
+	resp := &OpenAIResponse{
+		ID:    "chatcmpl-456",
+		Model: "qwen-max",
+		Choices: []OpenAIChoice{
+			{
+				Message: OpenAIMessage{
+					Role: "assistant",
+					ToolCalls: []OpenAIToolCall{
+						{
+							ID:   "call_abc",
+							Type: "function",
+							Function: OpenAIFunctionCall{
+								Name:      "get_weather",
+								Arguments: `{"city":"NYC"}`,
+							},
+						},
+					},
+				},
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+	out, err := OpenAIToAnthropic(resp, "claude-opus-4-5")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.StopReason != "tool_use" {
+		t.Errorf("expected stop_reason=tool_use, got %q", out.StopReason)
+	}
+	if len(out.Content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(out.Content))
+	}
+	block := out.Content[0]
+	if block.Type != "tool_use" {
+		t.Errorf("expected type=tool_use, got %q", block.Type)
+	}
+	if block.ID != "call_abc" {
+		t.Errorf("expected id=call_abc (D-07), got %q", block.ID)
+	}
+	if block.Name != "get_weather" {
+		t.Errorf("expected name=get_weather, got %q", block.Name)
+	}
+	var input map[string]interface{}
+	if err := json.Unmarshal(block.Input, &input); err != nil {
+		t.Fatalf("input not valid JSON: %v", err)
+	}
+	if input["city"] != "NYC" {
+		t.Errorf("expected city=NYC, got %v", input["city"])
+	}
+}
+
+func TestOpenAIToAnthropic_TextAndToolUse(t *testing.T) {
+	resp := &OpenAIResponse{
+		ID:    "chatcmpl-789",
+		Model: "qwen-max",
+		Choices: []OpenAIChoice{
+			{
+				Message: OpenAIMessage{
+					Role:    "assistant",
+					Content: "Let me check",
+					ToolCalls: []OpenAIToolCall{
+						{
+							ID:   "call_xyz",
+							Type: "function",
+							Function: OpenAIFunctionCall{
+								Name:      "get_weather",
+								Arguments: `{"city":"LA"}`,
+							},
+						},
+					},
+				},
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+	out, err := OpenAIToAnthropic(resp, "claude-opus-4-5")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out.Content) != 2 {
+		t.Fatalf("expected 2 content blocks (text+tool_use), got %d", len(out.Content))
+	}
+	if out.Content[0].Type != "text" {
+		t.Errorf("expected content[0].type=text, got %q", out.Content[0].Type)
+	}
+	if out.Content[1].Type != "tool_use" {
+		t.Errorf("expected content[1].type=tool_use, got %q", out.Content[1].Type)
+	}
+}
+
+func TestModelEcho(t *testing.T) {
+	resp := &OpenAIResponse{
+		ID:    "chatcmpl-abc",
+		Model: "gpt-4",
+		Choices: []OpenAIChoice{
+			{
+				Message:      OpenAIMessage{Role: "assistant", Content: "hi"},
+				FinishReason: "stop",
+			},
+		},
+	}
+	out, err := OpenAIToAnthropic(resp, "claude-3-haiku")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Model != "claude-3-haiku" {
+		t.Errorf("expected model=claude-3-haiku (D-03), got %q", out.Model)
+	}
+}
+
+func TestOpenAIToAnthropic_FinishReasons(t *testing.T) {
+	cases := []struct {
+		reason   string
+		expected string
+	}{
+		{"stop", "end_turn"},
+		{"tool_calls", "tool_use"},
+		{"length", "max_tokens"},
+		{"content_filter", "end_turn"},
+		{"", "end_turn"},
+	}
+	for _, tc := range cases {
+		resp := &OpenAIResponse{
+			Choices: []OpenAIChoice{
+				{
+					Message:      OpenAIMessage{Role: "assistant", Content: "x"},
+					FinishReason: tc.reason,
+				},
+			},
+		}
+		out, err := OpenAIToAnthropic(resp, "claude-opus-4-5")
+		if err != nil {
+			t.Fatalf("finish_reason=%q: unexpected error: %v", tc.reason, err)
+		}
+		if out.StopReason != tc.expected {
+			t.Errorf("finish_reason=%q: expected stop_reason=%q, got %q", tc.reason, tc.expected, out.StopReason)
+		}
+	}
+}
+
+func TestOpenAIToAnthropic_NoChoices(t *testing.T) {
+	resp := &OpenAIResponse{
+		ID:      "chatcmpl-empty",
+		Choices: []OpenAIChoice{},
+	}
+	_, err := OpenAIToAnthropic(resp, "claude-opus-4-5")
+	if err == nil {
+		t.Fatal("expected error for empty choices, got nil")
+	}
+}
