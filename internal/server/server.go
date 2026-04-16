@@ -25,6 +25,9 @@ func (s *Server) Engine() *gin.Engine {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.GET("/health", s.handleHealth)
+	v1 := r.Group("/v1")
+	v1.Use(s.authMiddleware)
+	v1.POST("/chat/completions", s.handleRelay)
 	return r
 }
 
