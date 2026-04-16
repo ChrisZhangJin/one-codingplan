@@ -465,3 +465,182 @@ func TestOpenAIToAnthropic_NoChoices(t *testing.T) {
 		t.Fatal("expected error for empty choices, got nil")
 	}
 }
+
+// --- StreamTranslator tests ---
+
+func TestStreamTranslator_Start(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	input := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n")
+	events, err := st.Translate(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events (message_start, content_block_start, content_block_delta), got %d: %v", len(events), events)
+	}
+	// event[0]: message_start
+	if !containsString(events[0], "message_start") {
+		t.Errorf("event[0] should be message_start, got: %s", events[0])
+	}
+	// event[1]: content_block_start
+	if !containsString(events[1], "content_block_start") {
+		t.Errorf("event[1] should be content_block_start, got: %s", events[1])
+	}
+	// event[2]: content_block_delta with "Hi"
+	if !containsString(events[2], "content_block_delta") {
+		t.Errorf("event[2] should be content_block_delta, got: %s", events[2])
+	}
+	if !containsString(events[2], "Hi") {
+		t.Errorf("event[2] should contain 'Hi', got: %s", events[2])
+	}
+}
+
+func TestStreamTranslator_Subsequent(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	// prime with first chunk
+	_, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+	// second chunk
+	events, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\" World\"},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (content_block_delta), got %d", len(events))
+	}
+	if !containsString(events[0], "content_block_delta") {
+		t.Errorf("expected content_block_delta, got: %s", events[0])
+	}
+	if !containsString(events[0], " World") {
+		t.Errorf("expected ' World' in delta, got: %s", events[0])
+	}
+}
+
+func TestStreamTranslator_Done(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	// prime started state
+	_, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+	// send [DONE]
+	events, err := st.Translate([]byte("data: [DONE]\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 closing events (content_block_stop, message_delta, message_stop), got %d", len(events))
+	}
+	if !containsString(events[0], "content_block_stop") {
+		t.Errorf("event[0] should be content_block_stop, got: %s", events[0])
+	}
+	if !containsString(events[1], "message_delta") {
+		t.Errorf("event[1] should be message_delta, got: %s", events[1])
+	}
+	if !containsString(events[1], "end_turn") {
+		t.Errorf("event[1] should contain end_turn stop_reason, got: %s", events[1])
+	}
+	if !containsString(events[2], "message_stop") {
+		t.Errorf("event[2] should be message_stop, got: %s", events[2])
+	}
+}
+
+func TestStreamTranslator_FinishReason(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	// prime started state
+	_, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+	// frame with finish_reason
+	events, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"!\"},\"finish_reason\":\"stop\"}]}\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// expect: content_block_delta + content_block_stop + message_delta + message_stop
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events (delta + 3 closing), got %d", len(events))
+	}
+	if !containsString(events[0], "content_block_delta") {
+		t.Errorf("event[0] should be content_block_delta, got: %s", events[0])
+	}
+	if !containsString(events[1], "content_block_stop") {
+		t.Errorf("event[1] should be content_block_stop, got: %s", events[1])
+	}
+	if !containsString(events[2], "message_delta") {
+		t.Errorf("event[2] should be message_delta, got: %s", events[2])
+	}
+	if !containsString(events[3], "message_stop") {
+		t.Errorf("event[3] should be message_stop, got: %s", events[3])
+	}
+}
+
+func TestStreamTranslator_Partial(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	// first half of an SSE frame
+	events, err := st.Translate([]byte(`data: {"choices":[{"del`))
+	if err != nil {
+		t.Fatalf("unexpected error on partial: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for partial frame, got %d", len(events))
+	}
+	// second half completes the frame
+	events, err = st.Translate([]byte("ta\":{\"content\":\"X\"}}]}\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error on completion: %v", err)
+	}
+	// should emit message_start + content_block_start + content_block_delta
+	if len(events) < 1 {
+		t.Errorf("expected events after completing partial frame, got %d", len(events))
+	}
+	// verify the delta contains X
+	last := events[len(events)-1]
+	if !containsString(last, "X") {
+		t.Errorf("expected 'X' in last event, got: %s", last)
+	}
+}
+
+func TestStreamTranslator_EmptyDelta(t *testing.T) {
+	st := NewStreamTranslator("claude-opus-4-5")
+	events, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for empty delta, got %d", len(events))
+	}
+}
+
+func TestStreamTranslator_ModelEcho(t *testing.T) {
+	st := NewStreamTranslator("claude-3-haiku")
+	events, err := st.Translate([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) < 1 {
+		t.Fatal("expected at least 1 event")
+	}
+	// event[0] is message_start, model should be echoed
+	if !containsString(events[0], "claude-3-haiku") {
+		t.Errorf("message_start event should contain model=claude-3-haiku (D-03), got: %s", events[0])
+	}
+}
+
+func containsString(b []byte, s string) bool {
+	return len(b) > 0 && len(s) > 0 && string(b) != "" && indexOf(b, []byte(s)) >= 0
+}
+
+func indexOf(b, sub []byte) int {
+	if len(sub) == 0 {
+		return 0
+	}
+	for i := 0; i <= len(b)-len(sub); i++ {
+		if string(b[i:i+len(sub)]) == string(sub) {
+			return i
+		}
+	}
+	return -1
+}
