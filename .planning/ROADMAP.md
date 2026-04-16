@@ -63,8 +63,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Auth middleware + relay handler with failover, non-streaming proxy, usage logging
-- [ ] 03-02-PLAN.md — SSE streaming passthrough with heartbeat and streaming tests
+- [x] 03-01-PLAN.md — Auth middleware + relay handler with failover, non-streaming proxy, usage logging
+- [x] 03-02-PLAN.md — SSE streaming passthrough with heartbeat and streaming tests
 
 ### Phase 4: Anthropic Format Translation
 **Goal:** A client can send a native Anthropic-format request to `/v1/messages` and receive a valid Anthropic-format response, with ocp transparently translating to and from OpenAI format on the wire to the upstream.
