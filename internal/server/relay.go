@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,10 @@ import (
 )
 
 var relayClient = &http.Client{Timeout: 30 * time.Second}
+
+// HeartbeatInterval controls how often a `: heartbeat` SSE comment is sent on idle streams.
+// Exported so tests can override it.
+var HeartbeatInterval = 30 * time.Second
 
 var errNoUpstream = gin.H{
 	"error": gin.H{
@@ -139,8 +144,8 @@ func (s *Server) handleRelay(c *gin.Context) {
 		outReq.Header.Del("Host")
 
 		resp, err := relayClient.Do(outReq)
-		cancel()
 		if err != nil {
+			cancel()
 			// Network/timeout error — transient, rotate
 			continue
 		}
@@ -148,6 +153,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 		if resp.StatusCode >= 400 {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			resp.Body.Close()
+			cancel()
 			class := pool.Classify(current.Name, resp.StatusCode, respBody)
 			switch class {
 			case pool.ClassCreditsExhausted:
@@ -162,12 +168,12 @@ func (s *Server) handleRelay(c *gin.Context) {
 			}
 		}
 
-		// Success path
+		// Success path — cancel is deferred into the proxy functions so the
+		// context remains live for the duration of body reads (streaming or buffered).
 		if rb.Stream {
-			// TODO(plan-02): implement SSE streaming
-			s.proxyBuffer(c, resp, keyID, current.ID, start)
+			s.proxyStream(c, resp, cancel, keyID, current.ID, start)
 		} else {
-			s.proxyBuffer(c, resp, keyID, current.ID, start)
+			s.proxyBuffer(c, resp, cancel, keyID, current.ID, start)
 		}
 		return
 	}
@@ -179,7 +185,8 @@ func (s *Server) handleRelay(c *gin.Context) {
 
 // proxyBuffer reads the upstream response body, forwards headers and status,
 // and writes the body to the client. Extracts token counts for usage logging (D-08, D-13).
-func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, keyID string, upstreamID uint, start time.Time) {
+func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time) {
+	defer cancel()
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
@@ -216,4 +223,67 @@ func (s *Server) logUsage(keyID string, upstreamID uint, success bool, in, out i
 		LatencyMs:    latency.Milliseconds(),
 		Success:      success,
 	})
+}
+
+// proxyStream copies an SSE upstream response to the client with per-chunk flushing,
+// a heartbeat goroutine, and async usage logging on completion.
+func (s *Server) proxyStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time) {
+	defer cancel()
+	defer resp.Body.Close()
+
+	// Set streaming headers before any body write (D-09)
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		return
+	}
+
+	// mu serializes writes from the heartbeat goroutine and the main read loop.
+	// Both write to c.Writer (not concurrency-safe) so all writes must be guarded.
+	var mu sync.Mutex
+	writeAndFlush := func(p []byte) {
+		mu.Lock()
+		c.Writer.Write(p) //nolint:errcheck
+		flusher.Flush()
+		mu.Unlock()
+	}
+
+	// Heartbeat goroutine — exits when handler returns via defer close(done) (T-3-08)
+	// Capture interval before goroutine launch to avoid data race with test overrides.
+	hbInterval := HeartbeatInterval
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(hbInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				writeAndFlush([]byte(": heartbeat\n\n"))
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Copy upstream SSE stream to client; flush after each read so frames arrive immediately
+	buf := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			writeAndFlush(buf[:n])
+		}
+		if err != nil {
+			break // EOF or mid-stream failure (D-10): close connection, no retry
+		}
+	}
+
+	// Log usage after stream completes; token counts are 0 for streaming per D-13 fallback
+	s.logUsage(keyID, upstreamID, true, 0, 0, time.Since(start))
 }
