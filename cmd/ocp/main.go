@@ -8,6 +8,7 @@ import (
 
 	"one-codingplan/internal/config"
 	"one-codingplan/internal/database"
+	"one-codingplan/internal/pool"
 	"one-codingplan/internal/server"
 )
 
@@ -38,7 +39,17 @@ func main() {
 		log.Fatalf("sync upstreams: %v", err)
 	}
 
-	srv := server.New(db, cfg)
+	poolCfg := &pool.Config{
+		RateLimitBackoff: cfg.PoolBackoff(),
+	}
+	p, err := pool.New(db, encKey, poolCfg)
+	if err != nil {
+		log.Fatalf("init pool: %v", err)
+	}
+	p.StartProbeLoop()
+	defer p.Stop()
+
+	srv := server.New(db, cfg, p)
 	r := srv.Engine()
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

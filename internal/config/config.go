@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -10,7 +11,22 @@ import (
 type Config struct {
 	Server    ServerConfig     `mapstructure:"server"`
 	Database  DatabaseConfig   `mapstructure:"database"`
+	Pool      PoolConfig       `mapstructure:"pool"`
 	Upstreams []UpstreamConfig `mapstructure:"upstreams"`
+}
+
+type PoolConfig struct {
+	RateLimitBackoff string `mapstructure:"rate_limit_backoff"`
+}
+
+// PoolBackoff parses Pool.RateLimitBackoff as a duration.
+// Falls back to 5s if the value is missing or unparseable.
+func (c *Config) PoolBackoff() time.Duration {
+	d, err := time.ParseDuration(c.Pool.RateLimitBackoff)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return d
 }
 
 type ServerConfig struct {
@@ -34,6 +50,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetConfigFile(configPath)
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("database.path", "./ocp.db")
+	v.SetDefault("pool.rate_limit_backoff", "5s")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
@@ -55,6 +72,7 @@ func Load(configPath string) (*Config, error) {
 	cfg.Server.Port = v.GetInt("server.port")
 	cfg.Server.AdminKey = v.GetString("server.admin_key")
 	cfg.Database.Path = v.GetString("database.path")
+	cfg.Pool.RateLimitBackoff = v.GetString("pool.rate_limit_backoff")
 
 	if cfg.Server.AdminKey == "" || cfg.Server.AdminKey == "change-me" {
 		return nil, fmt.Errorf("server.admin_key must be set to a non-default value")

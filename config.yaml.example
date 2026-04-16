@@ -5,6 +5,9 @@ server:
 database:
   path: "./ocp.db"
 
+pool:
+  rate_limit_backoff: "5s"
+
 upstreams:
   - name: kimi
     base_url: https://api.moonshot.ai

@@ -7,15 +7,17 @@ import (
 	"gorm.io/gorm"
 
 	"one-codingplan/internal/config"
+	"one-codingplan/internal/pool"
 )
 
 type Server struct {
-	db  *gorm.DB
-	cfg *config.Config
+	db   *gorm.DB
+	cfg  *config.Config
+	pool *pool.Pool
 }
 
-func New(db *gorm.DB, cfg *config.Config) *Server {
-	return &Server{db: db, cfg: cfg}
+func New(db *gorm.DB, cfg *config.Config, p *pool.Pool) *Server {
+	return &Server{db: db, cfg: cfg, pool: p}
 }
 
 func (s *Server) Engine() *gin.Engine {

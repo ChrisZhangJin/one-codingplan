@@ -11,7 +11,7 @@ import (
 )
 
 func TestHealthEndpoint_Status200(t *testing.T) {
-	engine := server.New(nil, nil).Engine()
+	engine := server.New(nil, nil, nil).Engine()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
@@ -21,7 +21,7 @@ func TestHealthEndpoint_Status200(t *testing.T) {
 }
 
 func TestHealthEndpoint_JSONBody(t *testing.T) {
-	engine := server.New(nil, nil).Engine()
+	engine := server.New(nil, nil, nil).Engine()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
@@ -35,7 +35,7 @@ func TestHealthEndpoint_JSONBody(t *testing.T) {
 }
 
 func TestHealthEndpoint_ContentType(t *testing.T) {
-	engine := server.New(nil, nil).Engine()
+	engine := server.New(nil, nil, nil).Engine()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
