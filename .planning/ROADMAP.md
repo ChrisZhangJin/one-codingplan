@@ -75,7 +75,12 @@ Plans:
 2. SSE streaming via `/v1/messages` delivers Anthropic-format event types (`content_block_delta`, `message_delta`, `message_stop`) token-by-token with no buffering
 3. A multi-turn conversation with tool use (tool_use / tool_result blocks) completes without a `400` error on any turn, confirming correct message-ordering translation
 4. Non-Anthropic clients hitting `/v1/chat/completions` are unaffected by the translation layer (regression: OpenAI pass-through still works)
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Types + request translator (AnthropicToOpenAI) + config/pool ModelOverride
+- [ ] 04-02-PLAN.md — Response translator (OpenAIToAnthropic) + StreamTranslator SSE re-framing
+- [ ] 04-03-PLAN.md — /v1/messages handler wiring + integration tests + regression
 
 ### Phase 5: Management API
 **Goal:** All access key lifecycle operations and upstream control actions are available via authenticated HTTP endpoints at `/api/*`, enabling the portal and CLI to be built against a stable contract.
@@ -176,7 +181,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | 1. Skeleton & Data Layer | 2/2 | Planned | — |
 | 2. Upstream Pool & Health | 0/2 | Planned | — |
 | 3. Relay Pipeline (OpenAI) | 0/2 | Planned | — |
-| 4. Anthropic Translation | 0/? | Not started | — |
+| 4. Anthropic Translation | 0/3 | Planned | — |
 | 5. Management API | 0/? | Not started | — |
 | 6. Web Portal | 0/? | Not started | — |
 | 7. CLI | 0/? | Not started | — |
