@@ -16,10 +16,11 @@ var ErrNoUpstreams = errors.New("pool: no available upstreams")
 
 // UpstreamEntry is the public view of an upstream returned by Select.
 type UpstreamEntry struct {
-	ID      uint
-	Name    string
-	BaseURL string
-	APIKey  string
+	ID            uint
+	Name          string
+	BaseURL       string
+	APIKey        string
+	ModelOverride string
 }
 
 // entry is the internal pool entry with availability state.
@@ -116,6 +117,20 @@ func (p *Pool) Stop() {
 // Backoff returns the configured rate-limit backoff duration.
 func (p *Pool) Backoff() time.Duration {
 	return p.cfg.RateLimitBackoff
+}
+
+// SetModelOverride sets the ModelOverride field on the entry with the given name.
+// ModelOverride is not stored in the database — it comes from config and is applied
+// after pool construction.
+func (p *Pool) SetModelOverride(name, override string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.entries {
+		if p.entries[i].Name == name {
+			p.entries[i].ModelOverride = override
+			return
+		}
+	}
 }
 
 // StartProbeLoop starts the background probe goroutine.
