@@ -29,7 +29,11 @@
 2. Admin can add, edit, and remove upstream provider entries (name, base URL, API key, enabled flag) via config file or seed API call, and entries survive a binary restart
 3. Outbound HTTP requests to an upstream base URL succeed when a SOCKS5 proxy address is configured, and succeed without it when no proxy is set
 4. SQLite database file is created on first run; tables for upstreams, access_keys, and usage_records exist with correct schema
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Go module + config + models + database layer
+- [ ] 01-02-PLAN.md — Gin HTTP server + main.go integration
 
 ### Phase 2: Upstream Pool & Health Monitor
 **Goal:** The proxy can select an upstream from the in-memory pool via round-robin, automatically marks upstreams unhealthy on error, applies per-provider cooldown timers, and returns cooled-down upstreams to the active pool when they recover.
@@ -162,7 +166,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Skeleton & Data Layer | 0/? | Not started | — |
+| 1. Skeleton & Data Layer | 0/2 | Planned | — |
 | 2. Upstream Pool & Health | 0/? | Not started | — |
 | 3. Relay Pipeline (OpenAI) | 0/? | Not started | — |
 | 4. Anthropic Translation | 0/? | Not started | — |
