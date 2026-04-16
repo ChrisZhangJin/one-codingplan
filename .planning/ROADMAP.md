@@ -78,9 +78,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Types + request translator (AnthropicToOpenAI) + config/pool ModelOverride
-- [ ] 04-02-PLAN.md — Response translator (OpenAIToAnthropic) + StreamTranslator SSE re-framing
-- [ ] 04-03-PLAN.md — /v1/messages handler wiring + integration tests + regression
+- [x] 04-01-PLAN.md — Types + request translator (AnthropicToOpenAI) + config/pool ModelOverride
+- [x] 04-02-PLAN.md — Response translator (OpenAIToAnthropic) + StreamTranslator SSE re-framing
+- [x] 04-03-PLAN.md — /v1/messages handler wiring + integration tests + regression
 
 ### Phase 5: Management API
 **Goal:** All access key lifecycle operations and upstream control actions are available via authenticated HTTP endpoints at `/api/*`, enabling the portal and CLI to be built against a stable contract.
