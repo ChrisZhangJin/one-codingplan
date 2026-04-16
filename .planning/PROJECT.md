@@ -2,7 +2,7 @@
 
 ## What This Is
 
-one-codingplan (ocp) is an auto-switching proxy that aggregates multiple AI coding plan credentials (Minimax, Kimi, Xiao, GLM, Qwen and others) behind a single OpenAI-compatible and Anthropic-compatible endpoint. Users point their tools — Claude Code, Codex, or any API client — at ocp using one URL and one key, and ocp handles routing, failover, and credit tracking transparently.
+one-codingplan (ocp) aggregates multiple AI coding plan credentials (Minimax, Kimi, Xiao, GLM, Qwen and others) behind a single OpenAI-compatible and Anthropic-compatible endpoint. Users point their tools — Claude Code, Codex, or any API client — at ocp using one URL and one key, and ocp handles routing, failover, and credit tracking transparently.
 
 ## Core Value
 
