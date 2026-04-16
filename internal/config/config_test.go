@@ -9,6 +9,7 @@ func TestConfigLoad_FromFile(t *testing.T) {
 	yaml := `
 server:
   port: 9090
+  admin_key: "test-admin-key"
 database:
   path: "/tmp/test.db"
 upstreams:
@@ -49,6 +50,7 @@ func TestConfigLoad_EnvOverride(t *testing.T) {
 	yaml := `
 server:
   port: 8080
+  admin_key: "test-admin-key"
 database:
   path: "./ocp.db"
 `
@@ -76,7 +78,8 @@ database:
 
 func TestConfigLoad_Defaults(t *testing.T) {
 	yaml := `
-server: {}
+server:
+  admin_key: "test-admin-key"
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {

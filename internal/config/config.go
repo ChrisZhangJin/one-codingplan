@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -51,6 +52,10 @@ func Load(configPath string) (*Config, error) {
 	cfg.Server.Port = v.GetInt("server.port")
 	cfg.Server.AdminKey = v.GetString("server.admin_key")
 	cfg.Database.Path = v.GetString("database.path")
+
+	if cfg.Server.AdminKey == "" || cfg.Server.AdminKey == "change-me" {
+		return nil, fmt.Errorf("server.admin_key must be set to a non-default value")
+	}
 
 	return &cfg, nil
 }
