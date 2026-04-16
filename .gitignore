@@ -1,0 +1,5 @@
+ocp.db
+config.yaml
+*.exe
+/ocp
+/dist/
