@@ -11,6 +11,7 @@ import (
 	"one-codingplan/internal/config"
 	"one-codingplan/internal/database"
 	"one-codingplan/internal/models"
+	"one-codingplan/internal/pool"
 	"one-codingplan/internal/server"
 
 	"gorm.io/gorm"
@@ -427,6 +428,109 @@ func TestDeleteKey(t *testing.T) {
 	db.Model(&models.AccessKey{}).Where("id = ?", "del-k1").Count(&count)
 	if count != 0 {
 		t.Errorf("expected key deleted from DB, count=%d", count)
+	}
+}
+
+// --- Upstream rotate/list tests ---
+
+func setupAdminTestWithPool(t *testing.T, entries []pool.UpstreamEntry) (*server.Server, *gorm.DB) {
+	t.Helper()
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	cfg := &config.Config{}
+	cfg.Server.AdminKey = "test-admin-key"
+	p := pool.NewForTest(entries)
+	t.Cleanup(func() { p.Stop() })
+	srv := server.New(db, cfg, p)
+	return srv, db
+}
+
+func TestRotateUpstream(t *testing.T) {
+	entries := []pool.UpstreamEntry{
+		{ID: 1, Name: "kimi", BaseURL: "https://kimi.example.com", APIKey: "sk-a"},
+		{ID: 2, Name: "glm", BaseURL: "https://glm.example.com", APIKey: "sk-b"},
+	}
+	srv, _ := setupAdminTestWithPool(t, entries)
+	engine := srv.Engine()
+
+	req := adminReq(t, http.MethodPost, "/api/upstreams/rotate", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["upstream"] == nil {
+		t.Error("expected upstream field in response")
+	}
+	if resp["message"] == nil {
+		t.Error("expected message field in response")
+	}
+}
+
+func TestRotateUpstream_NoUpstreams(t *testing.T) {
+	srv, _ := setupAdminTestWithPool(t, nil)
+	engine := srv.Engine()
+
+	req := adminReq(t, http.MethodPost, "/api/upstreams/rotate", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+	var m map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&m)
+	if m["error"] == nil {
+		t.Error("expected error field in response")
+	}
+}
+
+func TestListUpstreams(t *testing.T) {
+	entries := []pool.UpstreamEntry{
+		{ID: 1, Name: "kimi", BaseURL: "https://kimi.example.com", APIKey: "sk-secret-a"},
+		{ID: 2, Name: "glm", BaseURL: "https://glm.example.com", APIKey: "sk-secret-b"},
+	}
+	srv, _ := setupAdminTestWithPool(t, entries)
+	engine := srv.Engine()
+
+	req := adminReq(t, http.MethodGet, "/api/upstreams", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp []map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if len(resp) != 2 {
+		t.Fatalf("expected 2 upstreams, got %d", len(resp))
+	}
+	for _, u := range resp {
+		if u["name"] == nil {
+			t.Error("expected name field")
+		}
+		if u["base_url"] == nil {
+			t.Error("expected base_url field")
+		}
+		if _, ok := u["available"]; !ok {
+			t.Error("expected available field")
+		}
+		if _, ok := u["api_key"]; ok {
+			t.Error("api_key must not be exposed in upstream list")
+		}
 	}
 }
 

@@ -74,6 +74,20 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 	}, nil
 }
 
+// NewForTest creates a Pool from a slice of UpstreamEntry values without a database.
+// All entries are marked available. For use in tests only.
+func NewForTest(entries []UpstreamEntry) *Pool {
+	es := make([]entry, len(entries))
+	for i, e := range entries {
+		es[i] = entry{UpstreamEntry: e, available: true}
+	}
+	return &Pool{
+		entries: es,
+		cfg:     &Config{RateLimitBackoff: 5 * time.Second},
+		stopCh:  make(chan struct{}),
+	}
+}
+
 // UpstreamInfo is the public view of an upstream returned by List (no API key).
 type UpstreamInfo struct {
 	ID            uint   `json:"id"`

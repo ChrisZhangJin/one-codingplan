@@ -275,9 +275,14 @@ func (s *Server) handleDeleteKey(c *gin.Context) {
 }
 
 func (s *Server) handleRotateUpstream(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	name, err := s.pool.ForceRotate()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available upstreams"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upstream": name, "message": "rotated to " + name})
 }
 
 func (s *Server) handleListUpstreams(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	c.JSON(http.StatusOK, s.pool.List())
 }
