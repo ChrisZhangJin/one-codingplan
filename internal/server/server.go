@@ -28,6 +28,7 @@ func (s *Server) Engine() *gin.Engine {
 	v1 := r.Group("/v1")
 	v1.Use(s.authMiddleware)
 	v1.POST("/chat/completions", s.handleRelay)
+	v1.POST("/messages", s.handleAnthropicRelay)
 	return r
 }
 
