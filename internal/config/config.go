@@ -39,10 +39,11 @@ type DatabaseConfig struct {
 }
 
 type UpstreamConfig struct {
-	Name    string `mapstructure:"name"`
-	BaseURL string `mapstructure:"base_url"`
-	APIKey  string `mapstructure:"api_key"`
-	Enabled bool   `mapstructure:"enabled"`
+	Name          string `mapstructure:"name"`
+	BaseURL       string `mapstructure:"base_url"`
+	APIKey        string `mapstructure:"api_key"`
+	Enabled       bool   `mapstructure:"enabled"`
+	ModelOverride string `mapstructure:"model_override"`
 }
 
 func Load(configPath string) (*Config, error) {
