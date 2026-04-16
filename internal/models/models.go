@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"one-codingplan/internal/crypto"
+)
 
 type Upstream struct {
 	ID        uint      `gorm:"primarykey;autoIncrement"`
@@ -8,8 +12,16 @@ type Upstream struct {
 	UpdatedAt time.Time
 	Name      string `gorm:"uniqueIndex;not null"`
 	BaseURL   string `gorm:"column:base_url;not null"`
-	APIKey    string `gorm:"column:api_key"`
+	APIKeyEnc []byte `gorm:"column:api_key_enc"`
 	Enabled   bool   `gorm:"default:true"`
+}
+
+// DecryptAPIKey returns the plaintext API key using the provided AES key.
+func (u *Upstream) DecryptAPIKey(encKey []byte) (string, error) {
+	if len(u.APIKeyEnc) == 0 {
+		return "", nil
+	}
+	return crypto.Decrypt(encKey, u.APIKeyEnc)
 }
 
 type AccessKey struct {

@@ -2,6 +2,7 @@ package database
 
 import (
 	"one-codingplan/internal/config"
+	"one-codingplan/internal/crypto"
 	"one-codingplan/internal/models"
 
 	"github.com/glebarez/sqlite"
@@ -21,22 +22,26 @@ func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(&models.Upstream{}, &models.AccessKey{}, &models.UsageRecord{})
 }
 
-func SyncUpstreams(db *gorm.DB, cfgUpstreams []config.UpstreamConfig) error {
+func SyncUpstreams(db *gorm.DB, cfgUpstreams []config.UpstreamConfig, encKey []byte) error {
 	if len(cfgUpstreams) == 0 {
 		return nil
 	}
 	upstreams := make([]models.Upstream, len(cfgUpstreams))
 	for i, u := range cfgUpstreams {
+		enc, err := crypto.Encrypt(encKey, u.APIKey)
+		if err != nil {
+			return err
+		}
 		upstreams[i] = models.Upstream{
-			Name:    u.Name,
-			BaseURL: u.BaseURL,
-			APIKey:  u.APIKey,
-			Enabled: u.Enabled,
+			Name:      u.Name,
+			BaseURL:   u.BaseURL,
+			APIKeyEnc: enc,
+			Enabled:   u.Enabled,
 		}
 	}
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key", "enabled", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key_enc", "enabled", "updated_at"}),
 	}).Create(&upstreams).Error; err != nil {
 		return err
 	}

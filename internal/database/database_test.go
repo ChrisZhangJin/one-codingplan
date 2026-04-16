@@ -8,6 +8,9 @@ import (
 	"one-codingplan/internal/models"
 )
 
+// testEncKey is a 32-byte key used only in tests.
+var testEncKey = []byte("test-encryption-key-32-bytes-ok!")
+
 func TestOpen(t *testing.T) {
 	f, err := os.CreateTemp("", "test-*.db")
 	if err != nil {
@@ -57,12 +60,14 @@ func TestSyncUpstreams_Create(t *testing.T) {
 		{Name: "qwen", BaseURL: "https://dashscope.aliyuncs.com", APIKey: "sk-qwen", Enabled: true},
 	}
 
-	if err := SyncUpstreams(db, cfgUpstreams); err != nil {
+	if err := SyncUpstreams(db, cfgUpstreams, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams: %v", err)
 	}
 
 	var upstreams []models.Upstream
-	db.Find(&upstreams)
+	if result := db.Find(&upstreams); result.Error != nil {
+		t.Fatalf("Find: %v", result.Error)
+	}
 	if len(upstreams) != 2 {
 		t.Errorf("expected 2 upstreams, got %d", len(upstreams))
 	}
@@ -88,19 +93,21 @@ func TestSyncUpstreams_Update(t *testing.T) {
 	first := []config.UpstreamConfig{
 		{Name: "kimi", BaseURL: "https://old.url", APIKey: "sk-kimi", Enabled: true},
 	}
-	if err := SyncUpstreams(db, first); err != nil {
+	if err := SyncUpstreams(db, first, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams first: %v", err)
 	}
 
 	second := []config.UpstreamConfig{
 		{Name: "kimi", BaseURL: "https://new.url", APIKey: "sk-kimi", Enabled: true},
 	}
-	if err := SyncUpstreams(db, second); err != nil {
+	if err := SyncUpstreams(db, second, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams second: %v", err)
 	}
 
 	var upstreams []models.Upstream
-	db.Find(&upstreams)
+	if result := db.Find(&upstreams); result.Error != nil {
+		t.Fatalf("Find: %v", result.Error)
+	}
 	if len(upstreams) != 1 {
 		t.Errorf("expected 1 upstream, got %d", len(upstreams))
 	}
@@ -118,15 +125,17 @@ func TestSyncUpstreams_Empty(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	if err := SyncUpstreams(db, nil); err != nil {
+	if err := SyncUpstreams(db, nil, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams with nil: %v", err)
 	}
-	if err := SyncUpstreams(db, []config.UpstreamConfig{}); err != nil {
+	if err := SyncUpstreams(db, []config.UpstreamConfig{}, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams with empty slice: %v", err)
 	}
 
 	var count int64
-	db.Model(&models.Upstream{}).Count(&count)
+	if result := db.Model(&models.Upstream{}).Count(&count); result.Error != nil {
+		t.Fatalf("Count: %v", result.Error)
+	}
 	if count != 0 {
 		t.Errorf("expected 0 records, got %d", count)
 	}
@@ -150,7 +159,7 @@ func TestPersistence(t *testing.T) {
 	}
 	if err := SyncUpstreams(db, []config.UpstreamConfig{
 		{Name: "kimi", BaseURL: "https://api.moonshot.ai", APIKey: "sk-kimi", Enabled: true},
-	}); err != nil {
+	}, testEncKey); err != nil {
 		t.Fatalf("SyncUpstreams: %v", err)
 	}
 
@@ -169,7 +178,9 @@ func TestPersistence(t *testing.T) {
 	}
 
 	var upstreams []models.Upstream
-	db2.Find(&upstreams)
+	if result := db2.Find(&upstreams); result.Error != nil {
+		t.Fatalf("Find: %v", result.Error)
+	}
 	if len(upstreams) != 1 {
 		t.Errorf("expected 1 upstream after re-open, got %d", len(upstreams))
 	}
