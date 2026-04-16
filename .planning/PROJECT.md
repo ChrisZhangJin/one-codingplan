@@ -12,7 +12,9 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] SQLite persistence for upstreams, access keys, and usage records — validated in Phase 1
+- [x] Config-file-driven upstream management (YAML, survives restart) — validated in Phase 1
+- [x] Single Go binary with embedded HTTP server (Gin) — validated in Phase 1
 
 ### Active
 
@@ -74,4 +76,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-16 after initialization*
+*Last updated: 2026-04-16 after Phase 1 completion*
