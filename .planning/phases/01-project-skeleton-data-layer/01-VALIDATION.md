@@ -43,7 +43,6 @@ created: 2026-04-16
 | 1-01-03 | 01 | 0 | USGR-02 | — | N/A | integration | `go test ./internal/database/... -run TestPersistence -v` | ❌ W0 | ⬜ pending |
 | 1-01-04 | 01 | 1 | UPST-01 | — | N/A | integration | `go test ./internal/database/... -run TestSyncUpstreams -v` | ❌ W0 | ⬜ pending |
 | 1-01-05 | 01 | 1 | (SC-1) | — | N/A | unit | `go test ./internal/server/... -run TestHealthEndpoint -v` | ❌ W0 | ⬜ pending |
-| 1-01-06 | 01 | 2 | UPST-04 | — | N/A | integration | `go test ./internal/httpclient/... -run TestSOCKS5Proxy -v` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -54,7 +53,6 @@ created: 2026-04-16
 - [ ] `internal/config/config_test.go` — stubs for UPST-01 config loading + env override
 - [ ] `internal/database/database_test.go` — stubs for USGR-02 AutoMigrate + persistence + upstream sync
 - [ ] `internal/server/server_test.go` — stub for health endpoint (SC-1)
-- [ ] `internal/httpclient/httpclient_test.go` — stub for SOCKS5 proxy (UPST-04)
 
 ---
 

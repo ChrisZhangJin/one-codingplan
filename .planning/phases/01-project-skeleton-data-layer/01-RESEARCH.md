@@ -432,17 +432,11 @@ func main() {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Module path / import prefix**
-   - What we know: No `go.mod` exists yet; it must be created as the first action
-   - What's unclear: Should the module path be `github.com/[owner]/one-codingplan`, `ocp`, or something else? This determines all internal import paths.
-   - Recommendation: Pick `github.com/[owner]/one-codingplan` if the repo will be public; `ocp` if it's private/internal. Decide before Wave 0 generates any `.go` files.
+1. **Module path / import prefix** — RESOLVED: module path is `one-codingplan` (per 01-01 Task 1 action step 1: `go mod init one-codingplan`). Private/internal repo; short name avoids owner-path dependency.
 
-2. **Viper env override for nested structs after Unmarshal**
-   - What we know: `AutomaticEnv` works for `v.GetInt("server.port")` but `Unmarshal` into a struct has nuances
-   - What's unclear: Whether `OCP_SERVER_PORT` overrides `cfg.Server.Port` without additional `BindEnv` calls
-   - Recommendation: Wave 0 test must cover this case explicitly; the pattern is verified for `v.GetInt` but struct hydration needs confirming
+2. **Viper env override for nested structs after Unmarshal** — RESOLVED: plans adopt the post-Unmarshal explicit override pattern (01-01 Task 1 action step 4): after `v.Unmarshal(&cfg)`, override individual fields with `v.GetInt("server.port")`, `v.GetString("database.path")`, etc. This bypasses the `AutomaticEnv` + struct hydration nuance entirely.
 
 ---
 
