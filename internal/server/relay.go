@@ -61,7 +61,12 @@ func (s *Server) authMiddleware(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if key.ExpiresAt != nil && time.Now().UTC().After(key.ExpiresAt.UTC()) {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "key expired"})
+		return
+	}
 	c.Set("keyID", key.ID)
+	c.Set("accessKey", key)
 	c.Next()
 }
 

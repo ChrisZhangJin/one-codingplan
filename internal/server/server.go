@@ -29,6 +29,18 @@ func (s *Server) Engine() *gin.Engine {
 	v1.Use(s.authMiddleware)
 	v1.POST("/chat/completions", s.handleRelay)
 	v1.POST("/messages", s.handleAnthropicRelay)
+
+	api := r.Group("/api")
+	api.Use(s.adminMiddleware)
+	api.POST("/keys", s.handleCreateKey)
+	api.GET("/keys", s.handleListKeys)
+	api.GET("/keys/:id", s.handleGetKey)
+	api.PATCH("/keys/:id", s.handleUpdateKey)
+	api.DELETE("/keys/:id", s.handleDeleteKey)
+	api.POST("/keys/:id/block", s.handleBlockKey)
+	api.POST("/keys/:id/unblock", s.handleUnblockKey)
+	api.POST("/upstreams/rotate", s.handleRotateUpstream)
+	api.GET("/upstreams", s.handleListUpstreams)
 	return r
 }
 

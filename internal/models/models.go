@@ -30,6 +30,13 @@ type AccessKey struct {
 	UpdatedAt time.Time
 	Token     string `gorm:"uniqueIndex;not null"`
 	Enabled   bool   `gorm:"default:true"`
+
+	Name               string     `gorm:"not null;default:''"`
+	TokenBudget        int64      `gorm:"default:0"`
+	AllowedUpstreams   string     `gorm:"type:text;default:''"` // JSON-encoded []string; "" = unrestricted
+	ExpiresAt          *time.Time
+	RateLimitPerMinute int `gorm:"default:0"`
+	RateLimitPerDay    int `gorm:"default:0"`
 }
 
 type UsageRecord struct {
