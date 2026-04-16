@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/gin-gonic/gin"
 	"one-codingplan/internal/config"
 	"one-codingplan/internal/database"
+	"one-codingplan/internal/server"
 )
 
 func main() {
@@ -32,15 +32,10 @@ func main() {
 		log.Fatalf("sync upstreams: %v", err)
 	}
 
-	r := gin.New()
-	r.Use(gin.Logger())
-	r.Use(gin.Recovery())
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
+	r := server.NewEngine()
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Printf("starting on %s", addr)
+	log.Printf("ocp starting on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("server: %v", err)
 	}
