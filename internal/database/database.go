@@ -34,8 +34,18 @@ func SyncUpstreams(db *gorm.DB, cfgUpstreams []config.UpstreamConfig) error {
 			Enabled: u.Enabled,
 		}
 	}
-	return db.Clauses(clause.OnConflict{
+	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key", "enabled", "updated_at"}),
-	}).Create(&upstreams).Error
+	}).Create(&upstreams).Error; err != nil {
+		return err
+	}
+
+	activeNames := make([]string, len(cfgUpstreams))
+	for i, u := range cfgUpstreams {
+		activeNames[i] = u.Name
+	}
+	return db.Model(&models.Upstream{}).
+		Where("name NOT IN ?", activeNames).
+		Update("enabled", false).Error
 }
