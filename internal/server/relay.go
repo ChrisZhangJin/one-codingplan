@@ -1,0 +1,219 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"one-codingplan/internal/models"
+	"one-codingplan/internal/pool"
+)
+
+var relayClient = &http.Client{Timeout: 30 * time.Second}
+
+var errNoUpstream = gin.H{
+	"error": gin.H{
+		"message": "no upstream available",
+		"type":    "upstream_error",
+		"code":    "no_upstream",
+		"param":   nil,
+	},
+}
+
+// hopByHopHeaders are headers that must not be forwarded to the upstream.
+var hopByHopHeaders = []string{
+	"Connection", "Keep-Alive", "Transfer-Encoding", "TE", "Trailer", "Upgrade",
+}
+
+func cloneHeaders(src http.Header) http.Header {
+	dst := make(http.Header, len(src))
+	for k, vv := range src {
+		dst[k] = append([]string(nil), vv...)
+	}
+	for _, h := range hopByHopHeaders {
+		dst.Del(h)
+	}
+	return dst
+}
+
+// authMiddleware validates the bearer token against the access_keys table.
+// Rejects with 401 for missing, invalid, or disabled tokens (T-3-01, T-3-02).
+func (s *Server) authMiddleware(c *gin.Context) {
+	auth := c.GetHeader("Authorization")
+	token, ok := cutPrefix(auth, "Bearer ")
+	if !ok || token == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var key models.AccessKey
+	if err := s.db.Where("token = ? AND enabled = ?", token, true).First(&key).Error; err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	c.Set("keyID", key.ID)
+	c.Next()
+}
+
+// cutPrefix returns s without the provided leading prefix string and true.
+// If s doesn't start with prefix, cutPrefix returns s, false.
+func cutPrefix(s, prefix string) (string, bool) {
+	if len(s) >= len(prefix) && s[:len(prefix)] == prefix {
+		return s[len(prefix):], true
+	}
+	return s, false
+}
+
+// reqBody is used to detect stream mode from the request body.
+type reqBody struct {
+	Stream bool `json:"stream"`
+}
+
+// chatResponse is used to extract token counts from a non-streaming response.
+type chatResponse struct {
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
+}
+
+// handleRelay is the main relay handler: reads the body, authenticates (via middleware),
+// and forwards the request to an upstream with failover.
+func (s *Server) handleRelay(c *gin.Context) {
+	// Read body with limit (T-3-03: 10MB cap)
+	bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10*1024*1024+1))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read request body"})
+		return
+	}
+	if len(bodyBytes) > 10*1024*1024 {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+		return
+	}
+
+	var rb reqBody
+	json.Unmarshal(bodyBytes, &rb) //nolint:errcheck -- malformed JSON treated as non-stream
+
+	keyID := c.GetString("keyID")
+	start := time.Now()
+
+	seen := make(map[uint]bool)
+	var current *pool.UpstreamEntry
+	rateLimitRetry := false
+
+	for {
+		if rateLimitRetry && current != nil {
+			// retry same upstream after backoff (D-05 rate-limit)
+			rateLimitRetry = false
+		} else {
+			up, err := s.pool.Select(keyID)
+			if errors.Is(err, pool.ErrNoUpstreams) {
+				break
+			}
+			if err != nil {
+				break
+			}
+			if seen[up.ID] {
+				// Already tried this upstream — exhausted the pool
+				break
+			}
+			seen[up.ID] = true
+			current = up
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			current.BaseURL+"/v1/chat/completions",
+			bytes.NewReader(bodyBytes))
+		if err != nil {
+			cancel()
+			continue
+		}
+		outReq.Header = cloneHeaders(c.Request.Header)
+		outReq.Header.Set("Authorization", "Bearer "+current.APIKey)
+		outReq.Header.Del("Host")
+
+		resp, err := relayClient.Do(outReq)
+		cancel()
+		if err != nil {
+			// Network/timeout error — transient, rotate
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+			resp.Body.Close()
+			class := pool.Classify(current.Name, resp.StatusCode, respBody)
+			switch class {
+			case pool.ClassCreditsExhausted:
+				s.pool.Mark(current.ID, false)
+				continue // rotate to next
+			case pool.ClassRateLimited:
+				time.Sleep(s.pool.Backoff())
+				rateLimitRetry = true
+				continue // retry same upstream
+			default: // transient
+				continue // rotate to next (do NOT mark unavailable)
+			}
+		}
+
+		// Success path
+		if rb.Stream {
+			// TODO(plan-02): implement SSE streaming
+			s.proxyBuffer(c, resp, keyID, current.ID, start)
+		} else {
+			s.proxyBuffer(c, resp, keyID, current.ID, start)
+		}
+		return
+	}
+
+	// All upstreams exhausted (D-06)
+	c.JSON(http.StatusServiceUnavailable, errNoUpstream)
+	s.logUsage(keyID, 0, false, 0, 0, time.Since(start))
+}
+
+// proxyBuffer reads the upstream response body, forwards headers and status,
+// and writes the body to the client. Extracts token counts for usage logging (D-08, D-13).
+func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, keyID string, upstreamID uint, start time.Time) {
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
+		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		return
+	}
+
+	// Forward upstream response headers (T-3-07: do not leak internal headers already handled)
+	for k, vv := range resp.Header {
+		for _, v := range vv {
+			c.Header(k, v)
+		}
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	c.Data(resp.StatusCode, contentType, body)
+
+	// Extract token counts
+	var cr chatResponse
+	json.Unmarshal(body, &cr) //nolint:errcheck
+	s.logUsage(keyID, upstreamID, true,
+		cr.Usage.PromptTokens, cr.Usage.CompletionTokens,
+		time.Since(start))
+}
+
+// logUsage writes a UsageRecord to the database asynchronously (D-14).
+func (s *Server) logUsage(keyID string, upstreamID uint, success bool, in, out int, latency time.Duration) {
+	go s.db.Create(&models.UsageRecord{
+		KeyID:        keyID,
+		UpstreamID:   upstreamID,
+		InputTokens:  in,
+		OutputTokens: out,
+		LatencyMs:    latency.Milliseconds(),
+		Success:      success,
+	})
+}
