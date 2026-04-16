@@ -44,7 +44,11 @@ Plans:
 3. When an upstream returns a rate-limit error, the pool applies a backoff and retries the same upstream rather than rotating away
 4. After a cooldown period expires, the pool re-tests the upstream with a probe request and returns it to the active pool on success
 5. Per-provider error classification correctly distinguishes credits-exhausted from rate-limit from transient error for all five target providers (verified against captured error response fixtures)
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Pool struct + classifier with TDD (Select, Mark, round-robin, per-provider error classification)
+- [ ] 02-02-PLAN.md — Probe goroutine + config extension + server/main wiring
 
 ### Phase 3: Relay Pipeline (OpenAI Pass-Through)
 **Goal:** A client can send an OpenAI-format chat completion request (streaming or non-streaming) to ocp, the request is authenticated, forwarded to the selected upstream, and the response or SSE stream is returned to the client — with automatic failover to the next upstream on failure — while every request is logged to SQLite.
@@ -165,8 +169,8 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Skeleton & Data Layer | 0/2 | Planned | — |
-| 2. Upstream Pool & Health | 0/? | Not started | — |
+| 1. Skeleton & Data Layer | 2/2 | Planned | — |
+| 2. Upstream Pool & Health | 0/2 | Planned | — |
 | 3. Relay Pipeline (OpenAI) | 0/? | Not started | — |
 | 4. Anthropic Translation | 0/? | Not started | — |
 | 5. Management API | 0/? | Not started | — |
