@@ -47,8 +47,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Pool struct + classifier with TDD (Select, Mark, round-robin, per-provider error classification)
-- [ ] 02-02-PLAN.md — Probe goroutine + config extension + server/main wiring
+- [x] 02-01-PLAN.md — Pool struct + classifier with TDD (Select, Mark, round-robin, per-provider error classification)
+- [x] 02-02-PLAN.md — Probe goroutine + config extension + server/main wiring
 
 ### Phase 3: Relay Pipeline (OpenAI Pass-Through)
 **Goal:** A client can send an OpenAI-format chat completion request (streaming or non-streaming) to ocp, the request is authenticated, forwarded to the selected upstream, and the response or SSE stream is returned to the client — with automatic failover to the next upstream on failure — while every request is logged to SQLite.
@@ -60,7 +60,11 @@ Plans:
 3. When the active upstream returns an error or times out mid-request, the proxy retries on the next available upstream and the client receives a successful response (failover is transparent)
 4. A request with a missing or invalid bearer token receives `401 Unauthorized` and is not forwarded to any upstream
 5. After a proxied request completes, a usage record (key ID, upstream, token counts, latency, status) is readable in the SQLite `usage_records` table and survives a proxy restart
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Auth middleware + relay handler with failover, non-streaming proxy, usage logging
+- [ ] 03-02-PLAN.md — SSE streaming passthrough with heartbeat and streaming tests
 
 ### Phase 4: Anthropic Format Translation
 **Goal:** A client can send a native Anthropic-format request to `/v1/messages` and receive a valid Anthropic-format response, with ocp transparently translating to and from OpenAI format on the wire to the upstream.
@@ -171,7 +175,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 |-------|----------------|--------|-----------|
 | 1. Skeleton & Data Layer | 2/2 | Planned | — |
 | 2. Upstream Pool & Health | 0/2 | Planned | — |
-| 3. Relay Pipeline (OpenAI) | 0/? | Not started | — |
+| 3. Relay Pipeline (OpenAI) | 0/2 | Planned | — |
 | 4. Anthropic Translation | 0/? | Not started | — |
 | 5. Management API | 0/? | Not started | — |
 | 6. Web Portal | 0/? | Not started | — |
