@@ -15,10 +15,14 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 - [x] SQLite persistence for upstreams, access keys, and usage records — validated in Phase 1
 - [x] Config-file-driven upstream management (YAML, survives restart) — validated in Phase 1
 - [x] Single Go binary with embedded HTTP server (Gin) — validated in Phase 1
+- [x] OpenAI-compatible proxy endpoint with auth and failover — validated in Phase 3
+- [x] Transparent upstream failover (credits-exhausted, rate-limit retry, transient rotate) — validated in Phase 3
+- [x] SSE streaming passthrough with heartbeat — validated in Phase 3
+- [x] Usage logging per authenticated request — validated in Phase 3
 
 ### Active
 
-- [ ] Expose OpenAI-compatible and Anthropic-compatible proxy endpoints
+- [ ] Expose Anthropic-compatible proxy endpoint (translate Claude ↔ OpenAI format)
 - [ ] Support upstream plans: Minimax, Kimi, Xiao, GLM, Qwen (extensible)
 - [ ] Auto-switch upstream on: credits exhausted, rate limit hit, upstream error/timeout
 - [ ] Round-robin across allowed upstreams per access key (all plans if unrestricted, allowed subset if restricted)
