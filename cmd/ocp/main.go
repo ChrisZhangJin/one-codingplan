@@ -32,7 +32,8 @@ func main() {
 		log.Fatalf("sync upstreams: %v", err)
 	}
 
-	r := server.NewEngine()
+	srv := server.New(db, cfg)
+	r := srv.Engine()
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("ocp starting on %s", addr)
