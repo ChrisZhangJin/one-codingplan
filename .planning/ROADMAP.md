@@ -8,7 +8,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Project Skeleton & Data Layer** — Go module, Gin server, SQLite schema, GORM setup, outbound HTTP client with SOCKS5 support
+- [ ] **Phase 1: Project Skeleton & Data Layer** — Go module, Gin server, SQLite schema, GORM setup
 - [ ] **Phase 2: Upstream Pool & Health Monitor** — In-memory pool with round-robin, per-provider error classification, cooldown state machine
 - [ ] **Phase 3: Relay Pipeline (OpenAI Pass-Through)** — Auth middleware, relay handler, SSE streaming, failover retry, async usage logging
 - [ ] **Phase 4: Anthropic Format Translation** — Bidirectional Anthropic ↔ OpenAI translation, tool_use ordering, streaming equivalents
@@ -21,19 +21,18 @@
 ## Phase Details
 
 ### Phase 1: Project Skeleton & Data Layer
-**Goal:** The binary starts, serves a health endpoint, persists upstream credentials and access keys to SQLite, and the outbound HTTP client can reach upstream providers through SOCKS5 when configured.
+**Goal:** The binary starts, serves a health endpoint, and persists upstream credentials and access keys to SQLite.
 **Depends on:** Nothing
-**Requirements:** UPST-01, UPST-04, USGR-02
+**Requirements:** UPST-01, USGR-02
 **Success Criteria:**
 1. `go run ./cmd/ocp` starts without error and responds `200 OK` to `GET /health`
-2. Admin can add, edit, and remove upstream provider entries (name, base URL, API key, enabled flag) via config file or seed API call, and entries survive a binary restart
-3. Outbound HTTP requests to an upstream base URL succeed when a SOCKS5 proxy address is configured, and succeed without it when no proxy is set
-4. SQLite database file is created on first run; tables for upstreams, access_keys, and usage_records exist with correct schema
+2. Admin can add, edit, and remove upstream provider entries (name, base URL, API key, enabled flag) via config file, and entries survive a binary restart
+3. SQLite database file is created on first run; tables for upstreams, access_keys, and usage_records exist with correct schema
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Go module + config + models + database layer
-- [ ] 01-02-PLAN.md — Gin HTTP server + main.go integration
+- [x] 01-01-PLAN.md — Go module + config + models + database layer
+- [x] 01-02-PLAN.md — Gin HTTP server + main.go integration
 
 ### Phase 2: Upstream Pool & Health Monitor
 **Goal:** The proxy can select an upstream from the in-memory pool via round-robin, automatically marks upstreams unhealthy on error, applies per-provider cooldown timers, and returns cooled-down upstreams to the active pool when they recover.
@@ -133,7 +132,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | Requirement | Phase | Description |
 |-------------|-------|-------------|
 | UPST-01 | Phase 1 | Configure upstream providers via config file or management API |
-| UPST-04 | Phase 1 | SOCKS5 outbound HTTP client for GFW-adjacent upstreams |
+| ~~UPST-04~~ | ~~Phase 1~~ | ~~SOCKS5 outbound HTTP client~~ *(removed — descoped by D-05)* |
 | USGR-02 | Phase 1 | Usage persisted to SQLite; survives restarts |
 | UPST-02 | Phase 2 | Detect unhealthy upstreams reactively; mark with cooldown |
 | UPST-03 | Phase 2 | Re-test cooled-down upstreams; return to pool on recovery |
@@ -158,7 +157,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | CLI-02 | Phase 7 | `ocp next` — force rotate active upstream |
 | CLI-03 | Phase 7 | `ocp keys` — list keys with limits and usage |
 
-**Coverage: 25/25 v1 requirements mapped.**
+**Coverage: 24/24 v1 requirements mapped.** (UPST-04 removed)
 
 ---
 

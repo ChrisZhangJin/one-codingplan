@@ -24,7 +24,7 @@
 - [ ] **UPST-01**: Admin can configure upstream providers (name, base URL, API key, enabled/disabled) via config file or management API
 - [ ] **UPST-02**: Proxy detects unhealthy upstreams reactively via error-inference and marks them with a cooldown period
 - [ ] **UPST-03**: Proxy re-tests cooled-down upstreams and returns them to the active pool when healthy
-- [ ] **UPST-04**: Proxy supports SOCKS5 outbound HTTP client for upstreams that require proxy to reach through GFW
+- ~~**UPST-04**: Proxy supports SOCKS5 outbound HTTP client for upstreams that require proxy to reach through GFW~~ *(removed — all target providers are reachable without proxy; descoped by D-05)*
 
 ### Access Keys
 
@@ -96,7 +96,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | UPST-01 | Phase 1 | Pending |
-| UPST-04 | Phase 1 | Pending |
+| ~~UPST-04~~ | ~~Phase 1~~ | Removed |
 | USGR-02 | Phase 1 | Pending |
 | UPST-02 | Phase 2 | Pending |
 | UPST-03 | Phase 2 | Pending |
@@ -122,8 +122,8 @@
 | CLI-03 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
+- v1 requirements: 24 total (UPST-04 removed)
+- Mapped to phases: 24
 - Unmapped: 0
 
 ---
