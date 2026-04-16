@@ -95,8 +95,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Schema extension + admin middleware + key CRUD handlers
-- [ ] 05-02-PLAN.md — Limit enforcement + Pool.Select filter + ForceRotate + upstream endpoints
+- [x] 05-01-PLAN.md — Schema extension + admin middleware + key CRUD handlers
+- [x] 05-02-PLAN.md — Limit enforcement + Pool.Select filter + ForceRotate + upstream endpoints
 
 ### Phase 6: Web Portal
 **Goal:** An admin can open a browser, authenticate, and see the current upstream health status and the full access key table — all served from the single ocp binary with no external web server.
