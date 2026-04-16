@@ -93,41 +93,39 @@
 
 ## Traceability
 
-*(Populated by roadmapper)*
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PRXY-01 | — | Pending |
-| PRXY-02 | — | Pending |
-| PRXY-03 | — | Pending |
-| PRXY-04 | — | Pending |
-| ROUT-01 | — | Pending |
-| ROUT-02 | — | Pending |
-| ROUT-03 | — | Pending |
-| ROUT-04 | — | Pending |
-| UPST-01 | — | Pending |
-| UPST-02 | — | Pending |
-| UPST-03 | — | Pending |
-| UPST-04 | — | Pending |
-| KEY-01 | — | Pending |
-| KEY-02 | — | Pending |
-| KEY-03 | — | Pending |
-| KEY-04 | — | Pending |
-| KEY-05 | — | Pending |
-| KEY-06 | — | Pending |
-| USGR-01 | — | Pending |
-| USGR-02 | — | Pending |
-| PORT-01 | — | Pending |
-| PORT-02 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
+| UPST-01 | Phase 1 | Pending |
+| UPST-04 | Phase 1 | Pending |
+| USGR-02 | Phase 1 | Pending |
+| UPST-02 | Phase 2 | Pending |
+| UPST-03 | Phase 2 | Pending |
+| ROUT-01 | Phase 2 | Pending |
+| ROUT-02 | Phase 2 | Pending |
+| ROUT-03 | Phase 2 | Pending |
+| PRXY-01 | Phase 3 | Pending |
+| PRXY-03 | Phase 3 | Pending |
+| USGR-01 | Phase 3 | Pending |
+| PRXY-02 | Phase 4 | Pending |
+| PRXY-04 | Phase 4 | Pending |
+| KEY-01 | Phase 5 | Pending |
+| KEY-02 | Phase 5 | Pending |
+| KEY-03 | Phase 5 | Pending |
+| KEY-04 | Phase 5 | Pending |
+| KEY-05 | Phase 5 | Pending |
+| KEY-06 | Phase 5 | Pending |
+| ROUT-04 | Phase 5 | Pending |
+| PORT-01 | Phase 6 | Pending |
+| PORT-02 | Phase 6 | Pending |
+| CLI-01 | Phase 7 | Pending |
+| CLI-02 | Phase 7 | Pending |
+| CLI-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-16*
-*Last updated: 2026-04-16 after initial definition*
+*Last updated: 2026-04-16 after roadmap creation*
