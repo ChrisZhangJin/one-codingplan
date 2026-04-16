@@ -22,7 +22,7 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 
 ### Active
 
-- [ ] Expose Anthropic-compatible proxy endpoint (translate Claude ↔ OpenAI format)
+- [x] Expose Anthropic-compatible proxy endpoint (translate Claude ↔ OpenAI format) — validated in Phase 4
 - [ ] Support upstream plans: Minimax, Kimi, Xiao, GLM, Qwen (extensible)
 - [ ] Auto-switch upstream on: credits exhausted, rate limit hit, upstream error/timeout
 - [ ] Round-robin across allowed upstreams per access key (all plans if unrestricted, allowed subset if restricted)
@@ -80,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-16 after Phase 1 completion*
+*Last updated: 2026-04-16 after Phase 4 completion*
