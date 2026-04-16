@@ -430,5 +430,113 @@ func TestDeleteKey(t *testing.T) {
 	}
 }
 
+// --- Limit middleware tests ---
+
+func makeLimitTestKey(db *gorm.DB, id, token string, budget int64, rpm int) {
+	key := models.AccessKey{
+		ID:                 id,
+		Token:              token,
+		Enabled:            true,
+		Name:               id,
+		TokenBudget:        budget,
+		RateLimitPerMinute: rpm,
+	}
+	db.Create(&key)
+}
+
+func TestLimitMiddleware_TokenBudget(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	makeLimitTestKey(db, "budget-k1", "ocp-budget-token-1", 100, 0)
+	// Seed usage at exactly the budget
+	db.Create(&models.UsageRecord{KeyID: "budget-k1", UpstreamID: 0, InputTokens: 60, OutputTokens: 40, Success: true})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+	req.Header.Set("Authorization", "Bearer ocp-budget-token-1")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 for exhausted budget, got %d: %s", w.Code, w.Body.String())
+	}
+	var m map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&m)
+	if m["error"] != "token budget exceeded" {
+		t.Errorf("expected error=token budget exceeded, got %v", m)
+	}
+}
+
+func TestLimitMiddleware_TokenBudget_UnderLimit(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	makeLimitTestKey(db, "budget-k2", "ocp-budget-token-2", 100, 0)
+	// Seed usage under budget
+	db.Create(&models.UsageRecord{KeyID: "budget-k2", UpstreamID: 0, InputTokens: 30, OutputTokens: 20, Success: true})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+	req.Header.Set("Authorization", "Bearer ocp-budget-token-2")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	// Should not be 429 (will be 503 because no pool upstreams, but not budget error)
+	if w.Code == http.StatusTooManyRequests {
+		t.Errorf("expected request to pass limit check, got 429: %s", w.Body.String())
+	}
+}
+
+func TestLimitMiddleware_NoBudget(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	makeLimitTestKey(db, "budget-k3", "ocp-budget-token-3", 0, 0)
+	// Seed large usage — should not trigger any limit since budget=0 means unlimited
+	db.Create(&models.UsageRecord{KeyID: "budget-k3", UpstreamID: 0, InputTokens: 999999, OutputTokens: 999999, Success: true})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+	req.Header.Set("Authorization", "Bearer ocp-budget-token-3")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code == http.StatusTooManyRequests {
+		t.Errorf("expected no limit for budget=0, got 429: %s", w.Body.String())
+	}
+}
+
+func TestLimitMiddleware_RatePerMinute(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	makeLimitTestKey(db, "rate-k1", "ocp-rate-token-1", 0, 2)
+
+	server.ResetPerMinuteCounters()
+
+	doReq := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+		req.Header.Set("Authorization", "Bearer ocp-rate-token-1")
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// First two requests should pass the rate limit check
+	for i := 1; i <= 2; i++ {
+		code := doReq()
+		if code == http.StatusTooManyRequests {
+			t.Errorf("request %d should pass rate limit, got 429", i)
+		}
+	}
+	// Third request should be rate limited
+	code := doReq()
+	if code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 on third request (limit=2), got %d", code)
+	}
+}
+
 // Ensure time import used
 var _ = time.Now

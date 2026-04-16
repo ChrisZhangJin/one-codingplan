@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"one-codingplan/internal/models"
 	"one-codingplan/internal/pool"
 	"one-codingplan/internal/translator"
 )
@@ -57,6 +58,8 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 
 	originalModel := req.Model
 	keyID := c.GetString("keyID")
+	accessKey := c.MustGet("accessKey").(models.AccessKey)
+	allowedUpstreams := parseAllowedUpstreams(accessKey.AllowedUpstreams)
 	start := time.Now()
 
 	seen := make(map[uint]bool)
@@ -67,7 +70,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		if rateLimitRetry && current != nil {
 			rateLimitRetry = false
 		} else {
-			up, err := s.pool.Select(keyID)
+			up, err := s.pool.Select(allowedUpstreams)
 			if errors.Is(err, pool.ErrNoUpstreams) {
 				break
 			}

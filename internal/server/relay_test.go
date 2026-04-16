@@ -333,7 +333,7 @@ func TestRelay_Failover_Transient(t *testing.T) {
 
 	// Verify up1 still available in pool (not marked unavailable for transient)
 	p.Mark(u1.ID, true) // re-enable to test it can be selected
-	up, err := p.Select("key-1")
+	up, err := p.Select(nil)
 	if err != nil {
 		t.Errorf("expected up1 to still be selectable after transient error, got error: %v", err)
 	}

@@ -14,6 +14,105 @@ import (
 // encKey is exactly 32 bytes for AES-256.
 var testEncKey = []byte("test-encryption-key-32bytes!!XXX")
 
+func TestForceRotate(t *testing.T) {
+	p := newTestPool(t, "a", "b", "c")
+	seen := []string{}
+	for i := 0; i < 3; i++ {
+		name, err := p.ForceRotate()
+		if err != nil {
+			t.Fatalf("ForceRotate: %v", err)
+		}
+		seen = append(seen, name)
+	}
+	// Should cycle through all three distinct names
+	unique := map[string]bool{}
+	for _, n := range seen {
+		unique[n] = true
+	}
+	if len(unique) != 3 {
+		t.Errorf("expected 3 distinct upstreams in 3 rotations, got %v", seen)
+	}
+}
+
+func TestForceRotate_AllUnavailable(t *testing.T) {
+	p := newTestPool(t, "a", "b")
+	// Mark all unavailable
+	ids := []uint{}
+	seen := map[string]bool{}
+	for len(seen) < 2 {
+		e, err := p.Select(nil)
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if !seen[e.Name] {
+			seen[e.Name] = true
+			ids = append(ids, e.ID)
+		}
+	}
+	for _, id := range ids {
+		p.Mark(id, false)
+	}
+	_, err := p.ForceRotate()
+	if err != pool.ErrNoUpstreams {
+		t.Errorf("expected ErrNoUpstreams, got %v", err)
+	}
+}
+
+func TestSelectWithFilter_Unrestricted(t *testing.T) {
+	p := newTestPool(t, "kimi", "glm", "qwen")
+	seen := map[string]bool{}
+	for i := 0; i < 6; i++ {
+		e, err := p.Select(nil)
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		seen[e.Name] = true
+	}
+	if !seen["kimi"] || !seen["glm"] || !seen["qwen"] {
+		t.Errorf("unrestricted select should return all upstreams, got %v", seen)
+	}
+}
+
+func TestSelectWithFilter_Restricted(t *testing.T) {
+	p := newTestPool(t, "kimi", "glm", "qwen")
+	for i := 0; i < 5; i++ {
+		e, err := p.Select([]string{"kimi"})
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if e.Name != "kimi" {
+			t.Errorf("expected kimi, got %s", e.Name)
+		}
+	}
+}
+
+func TestSelectWithFilter_NoMatch(t *testing.T) {
+	p := newTestPool(t, "kimi", "glm", "qwen")
+	_, err := p.Select([]string{"nonexistent"})
+	if err != pool.ErrNoUpstreams {
+		t.Errorf("expected ErrNoUpstreams, got %v", err)
+	}
+}
+
+func TestList(t *testing.T) {
+	p := newTestPool(t, "a", "b")
+	list := p.List()
+	if len(list) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(list))
+	}
+	for _, info := range list {
+		if info.Name == "" {
+			t.Error("Name should not be empty")
+		}
+		if info.BaseURL == "" {
+			t.Error("BaseURL should not be empty")
+		}
+		if !info.Available {
+			t.Errorf("expected Available=true for %s", info.Name)
+		}
+	}
+}
+
 func newTestPool(t *testing.T, names ...string) *pool.Pool {
 	t.Helper()
 	db, err := database.Open(":memory:")
@@ -50,7 +149,7 @@ func TestSelect_RoundRobin(t *testing.T) {
 	p := newTestPool(t, "a", "b")
 	seen := map[string]int{}
 	for i := 0; i < 10; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -67,7 +166,7 @@ func TestSelect_SkipsUnavailable(t *testing.T) {
 	// Find a's ID by selecting until we get "a"
 	var aID uint
 	for i := 0; i < 4; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -82,7 +181,7 @@ func TestSelect_SkipsUnavailable(t *testing.T) {
 
 	p.Mark(aID, false)
 	for i := 0; i < 3; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select after mark: %v", err)
 		}
@@ -99,7 +198,7 @@ func TestSelect_NoUpstreams(t *testing.T) {
 	var ids []uint
 	seen := map[string]bool{}
 	for len(ids) < 2 {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			break
 		}
@@ -112,7 +211,7 @@ func TestSelect_NoUpstreams(t *testing.T) {
 		p.Mark(id, false)
 	}
 
-	_, err := p.Select("")
+	_, err := p.Select(nil)
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams, got %v", err)
 	}
@@ -125,7 +224,7 @@ func TestMark_Available(t *testing.T) {
 	var aID uint
 	seen := map[string]bool{}
 	for len(seen) < 2 {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -140,7 +239,7 @@ func TestMark_Available(t *testing.T) {
 
 	p.Mark(aID, false)
 	// Should only see b now
-	e, err := p.Select("")
+	e, err := p.Select(nil)
 	if err != nil {
 		t.Fatalf("Select after marking a unavailable: %v", err)
 	}
@@ -152,7 +251,7 @@ func TestMark_Available(t *testing.T) {
 	p.Mark(aID, true)
 	seenAfter := map[string]bool{}
 	for i := 0; i < 4; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select after re-enabling a: %v", err)
 		}
@@ -171,7 +270,7 @@ func TestSelect_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				if _, err := p.Select(""); err != nil {
+				if _, err := p.Select(nil); err != nil {
 					t.Errorf("concurrent Select: %v", err)
 					return
 				}
@@ -207,7 +306,7 @@ func TestNew_LoadsFromDB(t *testing.T) {
 
 	seen := map[string]bool{}
 	for i := 0; i < 4; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -242,7 +341,7 @@ func TestNew_DecryptsKeys(t *testing.T) {
 	}
 	defer p.Stop()
 
-	e, err := p.Select("")
+	e, err := p.Select(nil)
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}

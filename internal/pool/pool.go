@@ -74,24 +74,76 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 	}, nil
 }
 
+// UpstreamInfo is the public view of an upstream returned by List (no API key).
+type UpstreamInfo struct {
+	ID            uint   `json:"id"`
+	Name          string `json:"name"`
+	BaseURL       string `json:"base_url"`
+	Enabled       bool   `json:"enabled"`
+	Available     bool   `json:"available"`
+	ModelOverride string `json:"model_override,omitempty"`
+}
+
 // Select returns the next available upstream using round-robin.
-// keyID is accepted for future per-key filtering (D-17) but is ignored now.
-// Returns ErrNoUpstreams if all upstreams are unavailable.
-func (p *Pool) Select(keyID string) (*UpstreamEntry, error) {
+// If allowedUpstreams is non-empty, only upstreams in that list are considered.
+// Returns ErrNoUpstreams if no matching available upstream exists.
+func (p *Pool) Select(allowedUpstreams []string) (*UpstreamEntry, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	n := len(p.entries)
 	if n == 0 {
 		return nil, ErrNoUpstreams
 	}
+	allowed := make(map[string]bool, len(allowedUpstreams))
+	for _, name := range allowedUpstreams {
+		allowed[name] = true
+	}
+	unrestricted := len(allowed) == 0
 	for i := 0; i < n; i++ {
 		p.idx = (p.idx + 1) % n
-		if p.entries[p.idx].available {
-			e := p.entries[p.idx].UpstreamEntry
-			return &e, nil
+		e := &p.entries[p.idx]
+		if e.available && (unrestricted || allowed[e.Name]) {
+			out := e.UpstreamEntry
+			return &out, nil
 		}
 	}
 	return nil, ErrNoUpstreams
+}
+
+// ForceRotate advances the round-robin cursor to the next available upstream
+// and returns its name. Used by POST /api/upstreams/rotate.
+func (p *Pool) ForceRotate() (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := len(p.entries)
+	if n == 0 {
+		return "", ErrNoUpstreams
+	}
+	for i := 0; i < n; i++ {
+		p.idx = (p.idx + 1) % n
+		if p.entries[p.idx].available {
+			return p.entries[p.idx].Name, nil
+		}
+	}
+	return "", ErrNoUpstreams
+}
+
+// List returns status info for all pool entries. API keys are never included.
+func (p *Pool) List() []UpstreamInfo {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	result := make([]UpstreamInfo, len(p.entries))
+	for i, e := range p.entries {
+		result[i] = UpstreamInfo{
+			ID:            e.ID,
+			Name:          e.Name,
+			BaseURL:       e.BaseURL,
+			Enabled:       true,
+			Available:     e.available,
+			ModelOverride: e.ModelOverride,
+		}
+	}
+	return result
 }
 
 // Mark sets the availability of the upstream with the given id.

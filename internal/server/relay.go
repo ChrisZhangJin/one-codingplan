@@ -110,6 +110,8 @@ func (s *Server) handleRelay(c *gin.Context) {
 	json.Unmarshal(bodyBytes, &rb) //nolint:errcheck -- malformed JSON treated as non-stream
 
 	keyID := c.GetString("keyID")
+	accessKey := c.MustGet("accessKey").(models.AccessKey)
+	allowedUpstreams := parseAllowedUpstreams(accessKey.AllowedUpstreams)
 	start := time.Now()
 
 	seen := make(map[uint]bool)
@@ -121,7 +123,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 			// retry same upstream after backoff (D-05 rate-limit)
 			rateLimitRetry = false
 		} else {
-			up, err := s.pool.Select(keyID)
+			up, err := s.pool.Select(allowedUpstreams)
 			if errors.Is(err, pool.ErrNoUpstreams) {
 				break
 			}

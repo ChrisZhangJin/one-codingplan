@@ -60,7 +60,7 @@ func findID(t *testing.T, p *pool.Pool, name string) uint {
 	t.Helper()
 	seen := map[string]bool{}
 	for i := 0; i < 20; i++ {
-		e, err := p.Select("")
+		e, err := p.Select(nil)
 		if err != nil {
 			break
 		}
@@ -94,7 +94,7 @@ func TestProbe_RecoverOnSuccess(t *testing.T) {
 	p.ProbeAll()
 
 	// After successful probe the entry should be available again.
-	e, err := p.Select("")
+	e, err := p.Select(nil)
 	if err != nil {
 		t.Fatalf("Select after ProbeAll: %v (expected upstream to be available)", err)
 	}
@@ -122,7 +122,7 @@ func TestProbe_StayUnavailableOnFailure(t *testing.T) {
 
 	p.ProbeAll()
 
-	_, err := p.Select("")
+	_, err := p.Select(nil)
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams after failed probe, got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestProbe_StayUnavailableOnCreditsExhausted(t *testing.T) {
 
 	p.ProbeAll()
 
-	_, err := p.Select("")
+	_, err := p.Select(nil)
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams after credits-exhausted probe, got %v", err)
 	}
@@ -208,7 +208,7 @@ func TestProbe_BodyLimitedTo64KB(t *testing.T) {
 	// Probe should still succeed (200 status, not credits-exhausted) even with big body.
 	p.ProbeAll()
 
-	e, err := p.Select("")
+	e, err := p.Select(nil)
 	if err != nil {
 		t.Fatalf("Select after large-body probe: %v (expected upstream to be available)", err)
 	}
