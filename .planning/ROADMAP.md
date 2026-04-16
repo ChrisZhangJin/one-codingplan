@@ -92,7 +92,11 @@ Plans:
 3. `POST /api/keys/:id/block` and `POST /api/keys/:id/unblock` toggle key status; a blocked key's next request receives `401` and an unblocked key's next request succeeds
 4. A key with a token budget set receives `429` when its cumulative token usage would exceed the budget; a key restricted to a subset of upstreams only routes to that subset
 5. `POST /api/upstreams/rotate` (used by `ocp next`) forces the round-robin index to advance and the next proxied request uses the newly selected upstream
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Schema extension + admin middleware + key CRUD handlers
+- [ ] 05-02-PLAN.md — Limit enforcement + Pool.Select filter + ForceRotate + upstream endpoints
 
 ### Phase 6: Web Portal
 **Goal:** An admin can open a browser, authenticate, and see the current upstream health status and the full access key table — all served from the single ocp binary with no external web server.
@@ -182,7 +186,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | 2. Upstream Pool & Health | 0/2 | Planned | — |
 | 3. Relay Pipeline (OpenAI) | 0/2 | Planned | — |
 | 4. Anthropic Translation | 0/3 | Planned | — |
-| 5. Management API | 0/? | Not started | — |
+| 5. Management API | 0/2 | Planned | — |
 | 6. Web Portal | 0/? | Not started | — |
 | 7. CLI | 0/? | Not started | — |
 
