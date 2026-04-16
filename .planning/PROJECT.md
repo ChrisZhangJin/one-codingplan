@@ -23,12 +23,12 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 ### Active
 
 - [x] Expose Anthropic-compatible proxy endpoint (translate Claude ↔ OpenAI format) — validated in Phase 4
+- [x] Issue and manage access keys with configurable limits: token budget, allowed upstreams, rate limit (req/min and req/day), expiry date — validated in Phase 5
+- [x] Block and unblock access keys — validated in Phase 5
+- [x] Round-robin across allowed upstreams per access key (all plans if unrestricted, allowed subset if restricted) — validated in Phase 5
 - [ ] Support upstream plans: Minimax, Kimi, Xiao, GLM, Qwen (extensible)
 - [ ] Auto-switch upstream on: credits exhausted, rate limit hit, upstream error/timeout
-- [ ] Round-robin across allowed upstreams per access key (all plans if unrestricted, allowed subset if restricted)
 - [ ] Track upstream plan health: poll balance APIs where available, detect from errors where not
-- [ ] Issue and manage access keys with configurable limits: token budget, allowed upstreams, rate limit (req/min and req/day), expiry date
-- [ ] Block and unblock access keys
 - [ ] Web portal: dashboard showing upstream status, key management, usage stats
 - [ ] CLI (`ocp`): `ocp status`, `ocp next`, `ocp keys` commands
 - [ ] Claude Code skill and Codex hook: `/proxy-status`, `/proxy-next` slash commands that call proxy management API
@@ -80,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-16 after Phase 4 completion*
+*Last updated: 2026-04-16 after Phase 5 completion*
