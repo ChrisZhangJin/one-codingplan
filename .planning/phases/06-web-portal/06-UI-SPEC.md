@@ -56,13 +56,13 @@ Exceptions: touch targets on block/unblock toggle buttons minimum 44px height (a
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 14px | 400 (regular) | 1.5 |
-| Label | 12px | 500 (medium) | 1.4 |
+| Label | 12px | 400 (regular) | 1.4 |
 | Heading | 20px | 600 (semibold) | 1.2 |
 | Display | 28px | 600 (semibold) | 1.2 |
 
 **Notes:**
 - Body (14px/400) is the default for table rows, form inputs, and paragraph text. Source: functional-over-decorative principle from CONTEXT.md.
-- Label (12px/500) is used for table column headers, form field labels, status badge text, and empty state sub-copy.
+- Label (12px/400) is used for table column headers, form field labels, status badge text, and empty state sub-copy. The 12px size alone differentiates Label from Body; no weight distinction is needed.
 - Heading (20px/600) is used for section titles ("Upstream Status", "Access Keys").
 - Display (28px/600) is used only for the login card title ("one-codingplan").
 
@@ -81,7 +81,7 @@ Exceptions: touch targets on block/unblock toggle buttons minimum 44px height (a
 - "Create Key" primary button
 - "Login" submit button
 - Active/healthy upstream status indicator dot
-- Table row action: "Unblock" button (re-enabling a blocked key)
+- Table row action: "Unblock Key" button (re-enabling a blocked key)
 
 **Status color extensions (semantic, not structural):**
 - Healthy upstream: accent blue dot + "Healthy" label
@@ -99,7 +99,7 @@ Shadcn components to install:
 
 | Component | `npx shadcn add` command | Used for |
 |-----------|--------------------------|---------|
-| Button | `button` | Login submit, Create Key, Block, Unblock, Enable/Disable toggle |
+| Button | `button` | Login submit, Create Key, Block, Unblock Key, Enable/Disable toggle |
 | Input | `input` | Login key field, Create Key form fields |
 | Label | `label` | Form field labels |
 | Card | `card` | Login form container, Upstream status card per provider |
@@ -132,9 +132,9 @@ Single-page layout, no tabs, no sidebar. Two stacked sections separated by a `Se
 
 **Section 1: Upstream Status**
 - Section heading: "Upstream Status" (20px/600)
-- Refresh button (ghost, icon only — `RefreshCw` from lucide-react) next to heading. Manual refresh on click. No auto-polling. Source: Claude's Discretion — fetch-on-mount + manual refresh is sufficient for an operator console.
+- Refresh button (ghost, icon only — `RefreshCw` from lucide-react) next to heading. `aria-label="Refresh upstream status"`. Manual refresh on click. No auto-polling. Source: Claude's Discretion — fetch-on-mount + manual refresh is sufficient for an operator console.
 - Grid of provider cards (2 columns on desktop, 1 on mobile): each `Card` shows:
-  - Provider name (14px/500)
+  - Provider name (14px/400)
   - Status badge (Healthy / Cooldown / Disabled)
   - `Switch` for enabled/disabled toggle (calls `PATCH /api/upstreams/:name` or `POST /api/upstreams/rotate` as appropriate)
   - Status dot (colored per status color spec above)
@@ -143,7 +143,7 @@ Single-page layout, no tabs, no sidebar. Two stacked sections separated by a `Se
 - Section heading: "Access Keys" (20px/600)
 - "Create Key" button (accent, right-aligned to heading row)
 - `Table` with columns: Name, Token (masked), Status, Budget, Expires, Usage (tokens), Actions
-- Action cells: "Block" (destructive outline) / "Unblock" (accent outline) toggle + "Details" (ghost) icon button
+- Action cells: "Block Key" (destructive outline) / "Unblock Key" (accent outline) toggle + "Details" icon button (`aria-label="View key details"`, ghost variant)
 - Empty state when no keys exist: see Copywriting Contract below.
 
 ---
@@ -169,7 +169,7 @@ Single-page layout, no tabs, no sidebar. Two stacked sections separated by a `Se
 | Block key confirmation title | "Block this key?" |
 | Block key confirmation body | "Blocked keys receive 401 on every request. You can unblock at any time." |
 | Block key confirmation button | "Block Key" |
-| Unblock key button label | "Unblock" |
+| Unblock key button label | "Unblock Key" |
 | Delete key — not in scope | Key deletion is a Management API capability (DELETE /api/keys/:id) but no portal UI for delete is required by PORT-02. Omit. |
 | Upstream enable toggle (on) | "Enabled" |
 | Upstream enable toggle (off) | "Disabled" |
@@ -178,6 +178,8 @@ Single-page layout, no tabs, no sidebar. Two stacked sections separated by a `Se
 | Upstream health: dead | "Unavailable" |
 | Create Key name field placeholder | "e.g. claude-code-laptop" |
 | Create Key budget field placeholder | "0 = unlimited" |
+| Refresh button aria-label | "Refresh upstream status" |
+| Details icon button aria-label | "View key details" |
 
 ---
 
@@ -196,10 +198,10 @@ Single-page layout, no tabs, no sidebar. Two stacked sections separated by a `Se
 4. Token is shown ONCE in the success dialog. Source: Phase 5 CONTEXT.md D-13.
 
 ### Block/Unblock Flow
-1. Click "Block" in table action cell.
+1. Click "Block Key" in table action cell.
 2. Confirmation dialog opens (see Copywriting Contract).
 3. Confirm: POST `/api/keys/:id/block`. Refresh table row. Badge changes to "Blocked".
-4. "Unblock" in same cell: no confirmation — direct POST `/api/keys/:id/unblock`. Refresh table row.
+4. "Unblock Key" in same cell: no confirmation — direct POST `/api/keys/:id/unblock`. Refresh table row.
 
 ### Upstream Enable/Disable Toggle
 1. Switch in upstream card triggers `POST /api/upstreams/:name/disable` or `enable` (TBD per exact Phase 5 API surface — use the route from Phase 5 D-16).
