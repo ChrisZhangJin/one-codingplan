@@ -41,7 +41,7 @@ func SyncUpstreams(db *gorm.DB, cfgUpstreams []config.UpstreamConfig, encKey []b
 	}
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key_enc", "enabled", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key_enc", "updated_at"}),
 	}).Create(&upstreams).Error; err != nil {
 		return err
 	}
