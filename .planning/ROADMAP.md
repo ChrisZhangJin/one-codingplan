@@ -127,8 +127,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Cobra scaffold + serve migration + pool position field
-- [ ] 07-02-PLAN.md — status, next, keys subcommands
+- [x] 07-01-PLAN.md — Cobra scaffold + serve migration + pool position field
+- [x] 07-02-PLAN.md — status, next, keys subcommands
 
 ### Phase 8: Upstream Format Flexibility
 **Goal:** ocp can route requests natively to Anthropic-format upstreams without translation, and model/config errors disable the offending upstream rather than retrying indefinitely.
