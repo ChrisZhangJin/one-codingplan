@@ -60,10 +60,11 @@ None — v1.0 complete. Run `/gsd-new-milestone` to define v1.1.
 |---|-------------|------|--------|-----------|
 | 260417-jxm | Fix pool to load all upstreams including disabled ones so portal can toggle them | 2026-04-17 | 957541f | [260417-jxm-fix-pool-to-load-all-upstreams-including](./quick/260417-jxm-fix-pool-to-load-all-upstreams-including/) |
 | 260417-k6u | Add edit/modify functionality for upstreams and access keys | 2026-04-17 | 83ed963 | [260417-k6u-add-edit-modify-functionality-for-upstre](./quick/260417-k6u-add-edit-modify-functionality-for-upstre/) |
+| 260417-lff | Remove Format field from upstream config and simplify relay to passthrough-only | 2026-04-17 | df79d5e | [260417-lff-remove-format-field-from-upstream-config](./quick/260417-lff-remove-format-field-from-upstream-config/) |
 
 ---
 
 ## Session Continuity
 
-**Last updated:** 2026-04-17 - Completed quick task 260417-k6u: Add edit/modify functionality for upstreams and access keys
+**Last updated:** 2026-04-17 - Completed quick task 260417-lff: Remove Format field and simplify Anthropic relay to passthrough-only
 **Next action:** Run `/gsd-new-milestone` to start v1.1 planning
