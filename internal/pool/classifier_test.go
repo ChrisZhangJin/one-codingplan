@@ -77,6 +77,36 @@ func TestClassify(t *testing.T) {
 			body:     `{"error":{"code":1301,"message":"rate limit exceeded"}}`,
 			want:     pool.ClassRateLimited,
 		},
+		// Model/config error cases (ROUT-05)
+		{
+			name:     "TestClassify_Minimax_ModelNotSupported_500",
+			provider: "minimax",
+			status:   500,
+			body:     `{"code":1000,"message":"your current token plan not support model, MiniMax-Text-01 (2061)"}`,
+			want:     pool.ClassModelNotSupported,
+		},
+		{
+			name:     "TestClassify_Kimi_InvalidModel_501",
+			provider: "kimi",
+			status:   501,
+			body:     `{"error":"invalid model specified"}`,
+			want:     pool.ClassModelNotSupported,
+		},
+		{
+			name:     "TestClassify_GLM_ModelDoesNotExist_503",
+			provider: "glm",
+			status:   503,
+			body:     `{"error":"model does not exist"}`,
+			want:     pool.ClassModelNotSupported,
+		},
+		// 4xx with model keyword → transient (not 5xx)
+		{
+			name:     "TestClassify_ModelKeyword_400_Transient",
+			provider: "any",
+			status:   400,
+			body:     `{"error":"model does not exist"}`,
+			want:     pool.ClassTransient,
+		},
 	}
 
 	for _, tt := range tests {

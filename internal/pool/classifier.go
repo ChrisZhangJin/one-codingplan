@@ -9,6 +9,7 @@ const (
 	ClassTransient        ErrorClass = iota
 	ClassRateLimited
 	ClassCreditsExhausted
+	ClassModelNotSupported
 )
 
 // String returns a human-readable representation of the error class.
@@ -18,9 +19,21 @@ func (c ErrorClass) String() string {
 		return "rate-limited"
 	case ClassCreditsExhausted:
 		return "credits-exhausted"
+	case ClassModelNotSupported:
+		return "model-not-supported"
 	default:
 		return "transient"
 	}
+}
+
+// modelNotSupportedKeywords are body substrings that signal a model/config error.
+// Only matched on 5xx responses — 4xx with these strings are treated as transient.
+var modelNotSupportedKeywords = []string{
+	"not support model",
+	"invalid model",
+	"model does not exist",
+	"model not found",
+	"unsupported model",
 }
 
 // defaultCreditsKeywords are body substrings that signal credits exhaustion
@@ -45,6 +58,15 @@ var providerCreditsKeywords = map[string][]string{
 // they would be misclassified as rate-limited rather than credits-exhausted.
 func Classify(provider string, status int, body []byte) ErrorClass {
 	bodyStr := strings.ToLower(string(body))
+
+	// Model/config errors: 5xx only (ROUT-05)
+	if status >= 500 {
+		for _, kw := range modelNotSupportedKeywords {
+			if strings.Contains(bodyStr, kw) {
+				return ClassModelNotSupported
+			}
+		}
+	}
 
 	keywords := defaultCreditsKeywords
 	if overrides, ok := providerCreditsKeywords[provider]; ok {
