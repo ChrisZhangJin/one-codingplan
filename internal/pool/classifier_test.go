@@ -93,11 +93,12 @@ func TestClassify(t *testing.T) {
 			want:     pool.ClassModelNotSupported,
 		},
 		{
+			// 503 is a gateway error — treat as transient even if body contains model keyword
 			name:     "TestClassify_GLM_ModelDoesNotExist_503",
 			provider: "glm",
 			status:   503,
 			body:     `{"error":"model does not exist"}`,
-			want:     pool.ClassModelNotSupported,
+			want:     pool.ClassTransient,
 		},
 		// 4xx with model keyword → transient (not 5xx)
 		{
