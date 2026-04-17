@@ -7,7 +7,7 @@ import "encoding/json"
 type AnthropicRequest struct {
 	Model     string             `json:"model"`
 	Messages  []AnthropicMessage `json:"messages"`
-	System    string             `json:"system,omitempty"`
+	System    json.RawMessage    `json:"system,omitempty"`
 	MaxTokens int                `json:"max_tokens"`
 	Stream    bool               `json:"stream,omitempty"`
 	Tools     []AnthropicTool    `json:"tools,omitempty"`

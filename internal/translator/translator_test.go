@@ -55,7 +55,7 @@ func TestAnthropicToOpenAI_SystemPrompt(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "claude-opus-4-5",
 		MaxTokens: 1024,
-		System:    "You are helpful",
+		System:    json.RawMessage(`"You are helpful"`),
 		Messages: []AnthropicMessage{
 			{Role: "user", Content: "hi"},
 		},

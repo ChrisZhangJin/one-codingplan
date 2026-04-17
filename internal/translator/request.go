@@ -24,8 +24,8 @@ func AnthropicToOpenAI(req *AnthropicRequest, modelOverride string) (*OpenAIRequ
 	}
 
 	msgs := make([]OpenAIMessage, 0, len(req.Messages)+1)
-	if req.System != "" {
-		msgs = append(msgs, OpenAIMessage{Role: "system", Content: req.System})
+	if systemText := extractSystemText(req.System); systemText != "" {
+		msgs = append(msgs, OpenAIMessage{Role: "system", Content: systemText})
 	}
 
 	for _, m := range req.Messages {
@@ -163,6 +163,31 @@ func extractToolResultContent(block AnthropicContentBlock) string {
 		}
 		return string(raw)
 	}
+}
+
+// extractSystemText handles the Anthropic system field which can be either a
+// plain string or an array of content blocks (e.g. [{"type":"text","text":"..."}]).
+func extractSystemText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// Try plain string first.
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// Try array of content blocks.
+	var blocks []AnthropicContentBlock
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return ""
+	}
+	var result string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			result += b.Text
+		}
+	}
+	return result
 }
 
 // translateTools converts Anthropic tool definitions to OpenAI tool definitions.
