@@ -59,8 +59,8 @@ var providerCreditsKeywords = map[string][]string{
 func Classify(provider string, status int, body []byte) ErrorClass {
 	bodyStr := strings.ToLower(string(body))
 
-	// Model/config errors: 5xx only (ROUT-05)
-	if status >= 500 {
+	// Model/config errors: 500/501 only — 502/503/504 are gateway errors (ROUT-05)
+	if status == 500 || status == 501 {
 		for _, kw := range modelNotSupportedKeywords {
 			if strings.Contains(bodyStr, kw) {
 				return ClassModelNotSupported
