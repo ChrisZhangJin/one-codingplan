@@ -269,10 +269,12 @@ func (s *Server) proxyAnthropicStream(c *gin.Context, resp *http.Response, cance
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			events, translateErr := st.Translate(buf[:n])
-			if translateErr == nil {
-				for _, event := range events {
-					writeAndFlush(event)
-				}
+			if translateErr != nil {
+				log.Printf("[upstream] id=%d stream translate error: %v", upstreamID, translateErr)
+				break
+			}
+			for _, event := range events {
+				writeAndFlush(event)
 			}
 		}
 		if err != nil {
