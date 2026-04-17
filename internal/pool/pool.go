@@ -99,6 +99,7 @@ type UpstreamInfo struct {
 	Enabled       bool   `json:"enabled"`
 	Available     bool   `json:"available"`
 	ModelOverride string `json:"model_override,omitempty"`
+	Position      bool   `json:"position"`
 }
 
 // Select returns the next available upstream using round-robin.
@@ -158,6 +159,7 @@ func (p *Pool) List() []UpstreamInfo {
 			Enabled:       e.enabled,
 			Available:     e.available,
 			ModelOverride: e.ModelOverride,
+			Position:      i == p.idx,
 		}
 	}
 	return result
