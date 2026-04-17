@@ -1,8 +1,27 @@
+import { useState } from 'react'
+import { getToken } from './lib/auth'
+import LoginPage from './pages/LoginPage'
+import DashboardPage from './pages/DashboardPage'
+import { Toaster } from '@/components/ui/sonner'
+
 function App() {
+  const [loggedIn, setLoggedIn] = useState(!!getToken())
+
+  if (!loggedIn) {
+    return (
+      <>
+        <LoginPage onLogin={() => setLoggedIn(true)} />
+        <Toaster />
+      </>
+    )
+  }
+
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <p className="text-lg">ocp portal</p>
-    </div>
+    <>
+      <DashboardPage />
+      <Toaster />
+    </>
   )
 }
+
 export default App
