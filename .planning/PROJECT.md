@@ -80,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-16 after Phase 5 completion*
+*Last updated: 2026-04-17 after Phase 8 completion — per-upstream format passthrough and ClassModelNotSupported error classification added*
