@@ -85,37 +85,65 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 			current = up
 		}
 
-		// Translate Anthropic request to OpenAI format (D-01/D-02)
-		oaiReq, err := translator.AnthropicToOpenAI(&req, current.ModelOverride)
-		if err != nil {
-			// Translation failure is a client error
-			c.JSON(http.StatusBadRequest, anthropicError("invalid_request_error", "request translation failed: "+err.Error()))
-			return
-		}
+		var resp *http.Response
+		var cancel context.CancelFunc
 
-		translatedBody, err := json.Marshal(oaiReq)
-		if err != nil {
-			continue
-		}
+		if current.Format == "anthropic" {
+			// Direct passthrough — forward raw Anthropic body to /v1/messages
+			ctx, ctxCancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+			cancel = ctxCancel
+			outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+				current.BaseURL+"/v1/messages",
+				bytes.NewReader(bodyBytes))
+			if err != nil {
+				cancel()
+				continue
+			}
+			outReq.Header = cloneHeaders(c.Request.Header)
+			outReq.Header.Set("Authorization", "Bearer "+current.APIKey)
+			outReq.Header.Set("Content-Type", "application/json")
+			outReq.Header.Del("Host")
+			var reqErr error
+			resp, reqErr = relayClient.Do(outReq)
+			if reqErr != nil {
+				cancel()
+				log.Printf("[upstream] %s network error: %v", current.Name, reqErr)
+				continue
+			}
+		} else {
+			// Translate Anthropic request to OpenAI format (D-01/D-02)
+			oaiReq, err := translator.AnthropicToOpenAI(&req, current.ModelOverride)
+			if err != nil {
+				// Translation failure is a client error
+				c.JSON(http.StatusBadRequest, anthropicError("invalid_request_error", "request translation failed: "+err.Error()))
+				return
+			}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			current.BaseURL+"/v1/chat/completions",
-			bytes.NewReader(translatedBody))
-		if err != nil {
-			cancel()
-			continue
-		}
-		outReq.Header = cloneHeaders(c.Request.Header)
-		outReq.Header.Set("Authorization", "Bearer "+current.APIKey)
-		outReq.Header.Set("Content-Type", "application/json")
-		outReq.Header.Del("Host")
+			translatedBody, err := json.Marshal(oaiReq)
+			if err != nil {
+				continue
+			}
 
-		resp, err := relayClient.Do(outReq)
-		if err != nil {
-			cancel()
-			log.Printf("[upstream] %s network error: %v", current.Name, err)
-			continue
+			ctx, ctxCancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+			cancel = ctxCancel
+			outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+				current.BaseURL+"/v1/chat/completions",
+				bytes.NewReader(translatedBody))
+			if err != nil {
+				cancel()
+				continue
+			}
+			outReq.Header = cloneHeaders(c.Request.Header)
+			outReq.Header.Set("Authorization", "Bearer "+current.APIKey)
+			outReq.Header.Set("Content-Type", "application/json")
+			outReq.Header.Del("Host")
+			var reqErr error
+			resp, reqErr = relayClient.Do(outReq)
+			if reqErr != nil {
+				cancel()
+				log.Printf("[upstream] %s network error: %v", current.Name, reqErr)
+				continue
+			}
 		}
 
 		if resp.StatusCode >= 400 {
@@ -139,9 +167,17 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 
 		// Success path
 		if req.Stream {
-			s.proxyAnthropicStream(c, resp, cancel, keyID, current.ID, start, originalModel)
+			if current.Format == "anthropic" {
+				s.proxyStream(c, resp, cancel, keyID, current.ID, start)
+			} else {
+				s.proxyAnthropicStream(c, resp, cancel, keyID, current.ID, start, originalModel)
+			}
 		} else {
-			s.proxyAnthropicBuffer(c, resp, cancel, keyID, current.ID, start, originalModel)
+			if current.Format == "anthropic" {
+				s.proxyBuffer(c, resp, cancel, keyID, current.ID, start)
+			} else {
+				s.proxyAnthropicBuffer(c, resp, cancel, keyID, current.ID, start, originalModel)
+			}
 		}
 		return
 	}

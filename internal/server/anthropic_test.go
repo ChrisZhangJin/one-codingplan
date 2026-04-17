@@ -592,6 +592,154 @@ func TestAnthropicRelay_ToolRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAnthropicPassthrough_NonStream verifies that an upstream with Format=="anthropic"
+// receives the raw Anthropic body verbatim at /v1/messages, and the response is forwarded verbatim.
+func TestAnthropicPassthrough_NonStream(t *testing.T) {
+	db := setupTestDB(t)
+
+	var capturedPath string
+	var capturedBody []byte
+	var capturedContentType string
+
+	passthroughResp := map[string]interface{}{
+		"id":      "msg_pass_01",
+		"type":    "message",
+		"role":    "assistant",
+		"model":   "claude-opus-4-5",
+		"content": []map[string]interface{}{{"type": "text", "text": "passthrough response"}},
+		"stop_reason": "end_turn",
+		"usage": map[string]interface{}{"input_tokens": 7, "output_tokens": 3},
+	}
+	passthroughBody, _ := json.Marshal(passthroughResp)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedBody, _ = io.ReadAll(r.Body)
+		capturedContentType = r.Header.Get("Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write(passthroughBody)
+	}))
+	defer upstream.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstream(t, db, "mimo", upstream.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	p.SetFormat("mimo", "anthropic")
+	engine := buildServer(db, p).Engine()
+
+	reqBody := anthropicReqBody(false)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// Upstream must have received request at /v1/messages (passthrough path)
+	if capturedPath != "/v1/messages" {
+		t.Errorf("expected upstream path=/v1/messages, got %q", capturedPath)
+	}
+	// Upstream must have received verbatim Anthropic body
+	if !bytes.Equal(capturedBody, reqBody) {
+		t.Errorf("upstream body mismatch: got %s, want %s", capturedBody, reqBody)
+	}
+	if capturedContentType != "application/json" {
+		t.Errorf("expected Content-Type=application/json at upstream, got %q", capturedContentType)
+	}
+	// Response must be forwarded verbatim (contains passthrough JSON)
+	if !bytes.Contains(w.Body.Bytes(), []byte("passthrough response")) {
+		t.Errorf("expected verbatim passthrough response in body, got: %s", w.Body.String())
+	}
+}
+
+// TestAnthropicTranslate_NonStream verifies that an upstream with Format=="" receives
+// an OpenAI-translated body at /v1/chat/completions.
+func TestAnthropicTranslate_NonStream(t *testing.T) {
+	db := setupTestDB(t)
+
+	var capturedPath string
+	var capturedBody []byte
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write(openAIResponseBody("translated response", "stop", 10, 5))
+	}))
+	defer upstream.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstream(t, db, "up1", upstream.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	// No SetFormat call — default empty format means translate path
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
+		bytes.NewReader(anthropicReqBody(false)))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// Upstream must have received request at /v1/chat/completions (translate path)
+	if capturedPath != "/v1/chat/completions" {
+		t.Errorf("expected upstream path=/v1/chat/completions, got %q", capturedPath)
+	}
+	// Forwarded body must contain "messages" key (OpenAI format)
+	var forwarded map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &forwarded); err != nil {
+		t.Fatalf("failed to parse forwarded body: %v", err)
+	}
+	if _, ok := forwarded["messages"]; !ok {
+		t.Errorf("expected OpenAI 'messages' key in forwarded body, got %v", forwarded)
+	}
+}
+
+// TestAnthropicPassthrough_UpstreamError verifies that a passthrough upstream returning 500
+// causes failover to the next upstream (format=openai).
+func TestAnthropicPassthrough_UpstreamError(t *testing.T) {
+	db := setupTestDB(t)
+
+	fake500 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":"server error"}`))
+	}))
+	defer fake500.Close()
+
+	fake200 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write(openAIResponseBody("ok from openai upstream", "stop", 5, 3))
+	}))
+	defer fake200.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	// Seed 200 upstream first (lower ID) so pool selects 500 (anthropic) first in round-robin
+	seedUpstream(t, db, "up-ok", fake200.URL)
+	seedUpstream(t, db, "up-500-anthropic", fake500.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	p.SetFormat("up-500-anthropic", "anthropic")
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
+		bytes.NewReader(anthropicReqBody(false)))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("expected 200 after failover, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestRelay_OpenAI_Regression(t *testing.T) {
 	db := setupTestDB(t)
 	fake := fakeOpenAIUpstream(upstreamResponse(10, 5))
