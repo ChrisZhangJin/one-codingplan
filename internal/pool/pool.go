@@ -46,11 +46,11 @@ type Pool struct {
 	once    sync.Once
 }
 
-// New loads all enabled upstreams from db, decrypts their API keys, and returns
+// New loads all upstreams from db, decrypts their API keys, and returns
 // a ready Pool. It does not start any background goroutine (that is Plan 02).
 func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 	var upstreams []models.Upstream
-	if err := db.Where("enabled = ?", true).Find(&upstreams).Error; err != nil {
+	if err := db.Find(&upstreams).Error; err != nil {
 		return nil, fmt.Errorf("pool: load upstreams: %w", err)
 	}
 	entries := make([]entry, 0, len(upstreams))
@@ -66,8 +66,8 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 				BaseURL: u.BaseURL,
 				APIKey:  apiKey,
 			},
-			available: true,
-			enabled:   true,
+			available: u.Enabled,
+			enabled:   u.Enabled,
 		})
 	}
 	return &Pool{

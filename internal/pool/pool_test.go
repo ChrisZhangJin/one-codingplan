@@ -318,6 +318,30 @@ func TestNew_LoadsFromDB(t *testing.T) {
 	}
 	defer p.Stop()
 
+	// List() must return all 3 upstreams including the disabled one.
+	list := p.List()
+	if len(list) != 3 {
+		t.Fatalf("expected List() to return 3 entries, got %d", len(list))
+	}
+
+	// Find z in the list and verify its flags.
+	var zInfo *pool.UpstreamInfo
+	for i := range list {
+		if list[i].Name == "z" {
+			zInfo = &list[i]
+		}
+	}
+	if zInfo == nil {
+		t.Fatal("disabled upstream z not found in List()")
+	}
+	if zInfo.Enabled {
+		t.Error("z.Enabled should be false")
+	}
+	if zInfo.Available {
+		t.Error("z.Available should be false")
+	}
+
+	// Select() must still skip z.
 	seen := map[string]bool{}
 	for i := 0; i < 4; i++ {
 		e, err := p.Select(nil)
@@ -327,10 +351,24 @@ func TestNew_LoadsFromDB(t *testing.T) {
 		seen[e.Name] = true
 	}
 	if seen["z"] {
-		t.Error("disabled upstream z should not appear in pool")
+		t.Error("disabled upstream z should not be returned by Select()")
 	}
 	if !seen["x"] || !seen["y"] {
-		t.Errorf("expected both x and y, got %v", seen)
+		t.Errorf("expected both x and y from Select(), got %v", seen)
+	}
+
+	// SetEnabled(z, true) should make z selectable.
+	p.SetEnabled("z", true)
+	seenAfter := map[string]bool{}
+	for i := 0; i < 6; i++ {
+		e, err := p.Select(nil)
+		if err != nil {
+			t.Fatalf("Select after SetEnabled(z, true): %v", err)
+		}
+		seenAfter[e.Name] = true
+	}
+	if !seenAfter["z"] {
+		t.Error("expected z to appear in Select() after SetEnabled(z, true)")
 	}
 }
 
