@@ -98,7 +98,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			resp.Body.Close()
 			cancel()
-			log.Printf("[upstream] %s status %d: %s", up.Name, resp.StatusCode, respBody)
+			log.Printf("[upstream] %s status %d url=%s: %s", up.Name, resp.StatusCode, outReq.URL.String(), respBody)
 			class := pool.Classify(up.Name, resp.StatusCode, respBody)
 			switch class {
 			case pool.ClassCreditsExhausted:
