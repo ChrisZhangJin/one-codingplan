@@ -30,7 +30,7 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 - [ ] Auto-switch upstream on: credits exhausted, rate limit hit, upstream error/timeout
 - [ ] Track upstream plan health: poll balance APIs where available, detect from errors where not
 - [ ] Web portal: dashboard showing upstream status, key management, usage stats
-- [ ] CLI (`ocp`): `ocp status`, `ocp next`, `ocp keys` commands
+- [x] CLI (`ocp`): `ocp status`, `ocp next`, `ocp keys` commands — validated in Phase 7
 - [ ] Claude Code skill and Codex hook: `/proxy-status`, `/proxy-next` slash commands that call proxy management API
 
 ### Out of Scope
