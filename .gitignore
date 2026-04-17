@@ -5,3 +5,5 @@ config.yaml
 /dist/
 web/node_modules/
 web/dist/
+internal/server/web_dist/*
+!internal/server/web_dist/.gitkeep
