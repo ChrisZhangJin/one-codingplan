@@ -85,6 +85,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 		outReq.Header = cloneHeaders(c.Request.Header)
 		outReq.Header.Set("Authorization", "Bearer "+up.APIKey)
+		outReq.Header.Set("x-api-key", up.APIKey)
 		outReq.Header.Set("Content-Type", "application/json")
 		outReq.Header.Del("Host")
 		resp, reqErr := relayClient.Do(outReq)
