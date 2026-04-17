@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -113,6 +114,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		resp, err := relayClient.Do(outReq)
 		if err != nil {
 			cancel()
+			log.Printf("[upstream] %s network error: %v", current.Name, err)
 			continue
 		}
 
@@ -120,6 +122,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			resp.Body.Close()
 			cancel()
+			log.Printf("[upstream] %s status %d: %s", current.Name, resp.StatusCode, respBody)
 			class := pool.Classify(current.Name, resp.StatusCode, respBody)
 			switch class {
 			case pool.ClassCreditsExhausted:
@@ -162,6 +165,7 @@ func (s *Server) proxyAnthropicBuffer(c *gin.Context, resp *http.Response, cance
 
 	var oaiResp translator.OpenAIResponse
 	if err := json.Unmarshal(body, &oaiResp); err != nil {
+		log.Printf("[upstream] id=%d parse error: %v — body: %.200s", upstreamID, err, body)
 		c.JSON(http.StatusBadGateway, anthropicError("api_error", "failed to parse upstream response"))
 		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
 		return
@@ -169,6 +173,7 @@ func (s *Server) proxyAnthropicBuffer(c *gin.Context, resp *http.Response, cance
 
 	anthropicResp, err := translator.OpenAIToAnthropic(&oaiResp, originalModel)
 	if err != nil {
+		log.Printf("[upstream] id=%d translation error: %v", upstreamID, err)
 		c.JSON(http.StatusBadGateway, anthropicError("api_error", "response translation failed: "+err.Error()))
 		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
 		return
