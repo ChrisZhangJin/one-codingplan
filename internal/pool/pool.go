@@ -27,6 +27,7 @@ type UpstreamEntry struct {
 type entry struct {
 	UpstreamEntry
 	available bool
+	enabled   bool
 }
 
 // Config holds pool configuration.
@@ -65,6 +66,7 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 				APIKey:  apiKey,
 			},
 			available: true,
+			enabled:   true,
 		})
 	}
 	return &Pool{
@@ -152,7 +154,7 @@ func (p *Pool) List() []UpstreamInfo {
 			ID:            e.ID,
 			Name:          e.Name,
 			BaseURL:       e.BaseURL,
-			Enabled:       true,
+			Enabled:       e.enabled,
 			Available:     e.available,
 			ModelOverride: e.ModelOverride,
 		}
@@ -183,6 +185,21 @@ func (p *Pool) Stop() {
 // Backoff returns the configured rate-limit backoff duration.
 func (p *Pool) Backoff() time.Duration {
 	return p.cfg.RateLimitBackoff
+}
+
+// SetEnabled updates the enabled and available state of the upstream with the given name.
+// Disabling marks the entry unavailable so it is skipped by Select.
+// Enabling marks it available again so it re-enters the rotation.
+func (p *Pool) SetEnabled(name string, enabled bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.entries {
+		if p.entries[i].Name == name {
+			p.entries[i].enabled = enabled
+			p.entries[i].available = enabled
+			return
+		}
+	}
 }
 
 // SetModelOverride sets the ModelOverride field on the entry with the given name.

@@ -274,6 +274,26 @@ func (s *Server) handleDeleteKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "key deleted"})
 }
 
+func (s *Server) handleToggleUpstream(c *gin.Context) {
+	id := c.Param("id")
+
+	var upstream models.Upstream
+	if err := s.db.First(&upstream, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upstream not found"})
+		return
+	}
+
+	newEnabled := !upstream.Enabled
+	if err := s.db.Model(&upstream).Update("enabled", newEnabled).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle upstream"})
+		return
+	}
+
+	s.pool.SetEnabled(upstream.Name, newEnabled)
+
+	c.JSON(http.StatusOK, gin.H{"enabled": newEnabled})
+}
+
 func (s *Server) handleRotateUpstream(c *gin.Context) {
 	name, err := s.pool.ForceRotate()
 	if err != nil {

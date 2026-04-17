@@ -42,6 +42,7 @@ func (s *Server) Engine() *gin.Engine {
 	api.POST("/keys/:id/unblock", s.handleUnblockKey)
 	api.POST("/upstreams/rotate", s.handleRotateUpstream)
 	api.GET("/upstreams", s.handleListUpstreams)
+	api.POST("/upstreams/:id/toggle", s.handleToggleUpstream)
 	r.NoRoute(spaHandler())
 	return r
 }
