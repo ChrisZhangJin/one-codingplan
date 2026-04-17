@@ -1,35 +1,35 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: unknown
-last_updated: "2026-04-17T09:28:01.207Z"
+milestone: v1.1
+milestone_name: TBD
+status: planning
+last_updated: "2026-04-17T12:00:00.000Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 18
-  completed_plans: 18
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md
+See: .planning/PROJECT.md (updated 2026-04-17 after v1.0)
 
 **Core value:** A single endpoint that never goes down — when one upstream coding plan runs out of credits or hits a rate limit, ocp silently rotates to the next available one.
-**Current focus:** Phase 1
+**Current focus:** Planning next milestone (v1.1)
 
 ---
 
+## Milestone History
+
+- ✅ **v1.0 MVP** — 8 phases, 18 plans, shipped 2026-04-17. Archive: `.planning/milestones/v1.0-ROADMAP.md`
+
 ## Current Phase
 
-Phase 1: Project Skeleton & Data Layer — Not started
-
-## Completed Phases
-
-(none)
+None — v1.0 complete. Run `/gsd-new-milestone` to define v1.1.
 
 ---
 
@@ -37,46 +37,24 @@ Phase 1: Project Skeleton & Data Layer — Not started
 
 | Metric | Value |
 |--------|-------|
-| Phases total | 7 |
-| Phases complete | 0 |
-| Requirements mapped | 25/25 |
-| Plans complete | 0 |
+| v1.0 phases | 8/8 complete |
+| v1.0 plans | 18/18 complete |
+| v1.0 requirements | 26/26 mapped (UPST-04 removed) |
+| Timeline | 2026-04-16 → 2026-04-17 (2 days) |
 
 ---
 
-## Open Questions
+## Open Questions (Carry Forward to v1.1)
 
-From research SUMMARY.md (unresolved as of 2026-04-16):
+1. **Balance APIs for Minimax, GLM, Qwen.** Only Kimi has a documented programmatic balance endpoint. Minimax/GLM/Qwen use error-inference fallback. Investigate live keys for proactive polling in v1.1.
 
-1. **"Xiao" provider identity.** Listed in PROJECT.md as a named upstream; no public AI coding plan API matching this name was found. Treat as config-only (base URL + key fields) with no balance polling until identified. Does not block implementation — the extensible upstream config handles unknown providers gracefully.
+2. **"Xiao" provider identity.** Listed in PROJECT.md but no public API found. Treat as config-only until identified.
 
-2. **Balance APIs for Minimax, GLM, Qwen.** Only Kimi has a documented programmatic balance endpoint (`GET /v1/users/me/balance`). Minimax, GLM, and Qwen appear to be web-dashboard-only. Design uses error-inference as fallback for all three. Investigate with live keys during Phase 2.
-
-3. **Qwen region key compatibility.** China and international DashScope keys are not interchangeable. Confirm which key type is in use and which endpoint to configure before wiring up Qwen in Phase 2.
-
-4. **Upstream connectivity from inside Docker.** Domestic providers (DashScope, GLM) should be reachable without a proxy. Non-domestic or GFW-adjacent endpoints may need per-upstream SOCKS5 config. Verify each provider from inside the container during Phase 2/3.
-
-5. **MiniMax coding plan key type.** Minimax issues separate keys for the "coding plan" product vs pay-as-you-go. Confirm key type and whether the same error codes apply to both before implementing error classification in Phase 2.
-
----
-
-## Accumulated Context
-
-### Decisions Made
-
-(none yet — decisions recorded here at phase transitions)
-
-### Todos
-
-(none yet)
-
-### Blockers
-
-(none yet)
+3. **Qwen region key compatibility.** China and international DashScope keys are not interchangeable — confirm which is in use.
 
 ---
 
 ## Session Continuity
 
-**Last updated:** 2026-04-16 (roadmap creation)
-**Next action:** Run `/gsd-plan-phase 1` to create the execution plan for Phase 1
+**Last updated:** 2026-04-17 (v1.0 milestone completion)
+**Next action:** Run `/gsd-new-milestone` to start v1.1 planning
