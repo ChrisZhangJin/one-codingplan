@@ -279,7 +279,6 @@ type patchUpstreamRequest struct {
 	Name          *string `json:"name"`
 	BaseURL       *string `json:"base_url"`
 	APIKey        *string `json:"api_key"`
-	Format        *string `json:"format"`
 	ModelOverride *string `json:"model_override"`
 }
 
@@ -311,9 +310,6 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 	}
 	if req.BaseURL != nil {
 		updates["base_url"] = *req.BaseURL
-	}
-	if req.Format != nil {
-		updates["format"] = *req.Format
 	}
 	if req.ModelOverride != nil {
 		updates["model_override"] = *req.ModelOverride
@@ -351,7 +347,7 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 	if req.APIKey != nil && *req.APIKey != "" {
 		keyForPool = *req.APIKey
 	}
-	s.pool.UpdateEntry(upstream.ID, upstream.Name, upstream.BaseURL, keyForPool, upstream.ModelOverride, upstream.Format)
+	s.pool.UpdateEntry(upstream.ID, upstream.Name, upstream.BaseURL, keyForPool, upstream.ModelOverride)
 
 	info := s.pool.List()
 	maskedKey := maskAPIKey(plainKey)
@@ -368,7 +364,6 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 		"id":             upstream.ID,
 		"name":           upstream.Name,
 		"base_url":       upstream.BaseURL,
-		"format":         upstream.Format,
 		"model_override": upstream.ModelOverride,
 		"masked_key":     maskedKey,
 	})

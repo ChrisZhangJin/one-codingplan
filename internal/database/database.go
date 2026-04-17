@@ -37,13 +37,12 @@ func SyncUpstreams(db *gorm.DB, cfgUpstreams []config.UpstreamConfig, encKey []b
 			BaseURL:       u.BaseURL,
 			APIKeyEnc:     enc,
 			Enabled:       u.Enabled,
-			Format:        u.Format,
 			ModelOverride: u.ModelOverride,
 		}
 	}
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key_enc", "format", "model_override", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"base_url", "api_key_enc", "model_override", "updated_at"}),
 	}).Create(&upstreams).Error; err != nil {
 		return err
 	}

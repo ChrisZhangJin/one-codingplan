@@ -21,7 +21,6 @@ type UpstreamEntry struct {
 	BaseURL       string
 	APIKey        string
 	ModelOverride string
-	Format        string
 }
 
 // entry is the internal pool entry with availability state.
@@ -66,7 +65,6 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 				BaseURL:       u.BaseURL,
 				APIKey:        apiKey,
 				ModelOverride: u.ModelOverride,
-				Format:        u.Format,
 			},
 			available: u.Enabled,
 			enabled:   u.Enabled,
@@ -101,7 +99,6 @@ type UpstreamInfo struct {
 	Enabled       bool   `json:"enabled"`
 	Available     bool   `json:"available"`
 	ModelOverride string `json:"model_override,omitempty"`
-	Format        string `json:"format,omitempty"`
 	MaskedKey     string `json:"masked_key,omitempty"`
 	Position      bool   `json:"position"`
 }
@@ -163,7 +160,6 @@ func (p *Pool) List() []UpstreamInfo {
 			Enabled:       e.enabled,
 			Available:     e.available,
 			ModelOverride: e.ModelOverride,
-			Format:        e.Format,
 			Position:      i == p.idx,
 		}
 	}
@@ -172,7 +168,7 @@ func (p *Pool) List() []UpstreamInfo {
 
 // UpdateEntry updates the editable fields of the pool entry with the given ID.
 // If apiKey is empty, the existing key is preserved.
-func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, format string) {
+func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for i := range p.entries {
@@ -183,7 +179,6 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, format
 				p.entries[i].APIKey = apiKey
 			}
 			p.entries[i].ModelOverride = modelOverride
-			p.entries[i].Format = format
 			return
 		}
 	}
@@ -238,20 +233,6 @@ func (p *Pool) SetModelOverride(name, override string) {
 	for i := range p.entries {
 		if p.entries[i].Name == name {
 			p.entries[i].ModelOverride = override
-			return
-		}
-	}
-}
-
-// SetFormat sets the Format field on the entry with the given name.
-// Format is not stored in the database — it comes from config and is applied
-// after pool construction.
-func (p *Pool) SetFormat(name, format string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for i := range p.entries {
-		if p.entries[i].Name == name {
-			p.entries[i].Format = format
 			return
 		}
 	}

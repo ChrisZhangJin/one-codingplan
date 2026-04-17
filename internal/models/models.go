@@ -13,8 +13,7 @@ type Upstream struct {
 	Name      string `gorm:"uniqueIndex;not null"`
 	BaseURL   string `gorm:"column:base_url;not null"`
 	APIKeyEnc []byte `gorm:"column:api_key_enc"`
-	Enabled   bool   `gorm:"default:true"`
-	Format        string `gorm:"default:''"`
+	Enabled       bool   `gorm:"default:true"`
 	ModelOverride string `gorm:"column:model_override;default:''"`
 }
 
