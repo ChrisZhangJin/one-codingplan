@@ -48,6 +48,15 @@ func cloneHeaders(src http.Header) http.Header {
 	return dst
 }
 
+func isHopByHop(header string) bool {
+	for _, h := range hopByHopHeaders {
+		if http.CanonicalHeaderKey(h) == http.CanonicalHeaderKey(header) {
+			return true
+		}
+	}
+	return false
+}
+
 // authMiddleware validates the bearer token against the access_keys table.
 // Rejects with 401 for missing, invalid, or disabled tokens (T-3-01, T-3-02).
 func (s *Server) authMiddleware(c *gin.Context) {
@@ -200,8 +209,11 @@ func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context
 		return
 	}
 
-	// Forward upstream response headers (T-3-07: do not leak internal headers already handled)
+	// Forward upstream response headers, excluding hop-by-hop headers (T-3-07)
 	for k, vv := range resp.Header {
+		if isHopByHop(k) {
+			continue
+		}
 		for _, v := range vv {
 			c.Header(k, v)
 		}
