@@ -44,6 +44,7 @@ type UpstreamConfig struct {
 	APIKey        string `mapstructure:"api_key"`
 	Enabled       bool   `mapstructure:"enabled"`
 	ModelOverride string `mapstructure:"model_override"`
+	Format        string `mapstructure:"format"`
 }
 
 func Load(configPath string) (*Config, error) {

@@ -50,6 +50,9 @@ func main() {
 		if u.ModelOverride != "" {
 			p.SetModelOverride(u.Name, u.ModelOverride)
 		}
+		if u.Format != "" {
+			p.SetFormat(u.Name, u.Format)
+		}
 	}
 	p.StartProbeLoop()
 	defer p.Stop()

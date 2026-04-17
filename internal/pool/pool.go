@@ -21,6 +21,7 @@ type UpstreamEntry struct {
 	BaseURL       string
 	APIKey        string
 	ModelOverride string
+	Format        string
 }
 
 // entry is the internal pool entry with availability state.
@@ -211,6 +212,20 @@ func (p *Pool) SetModelOverride(name, override string) {
 	for i := range p.entries {
 		if p.entries[i].Name == name {
 			p.entries[i].ModelOverride = override
+			return
+		}
+	}
+}
+
+// SetFormat sets the Format field on the entry with the given name.
+// Format is not stored in the database — it comes from config and is applied
+// after pool construction.
+func (p *Pool) SetFormat(name, format string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.entries {
+		if p.entries[i].Name == name {
+			p.entries[i].Format = format
 			return
 		}
 	}
