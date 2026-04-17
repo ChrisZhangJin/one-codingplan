@@ -1,7 +1,7 @@
 # Roadmap: one-codingplan (ocp)
 
 **Milestone:** v1.0
-**Phases:** 7
+**Phases:** 8
 **Requirements:** 25 v1 requirements
 
 ---
@@ -111,8 +111,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 06-01-PLAN.md — React/Vite scaffold + shadcn init + Go embed + Makefile
-- [ ] 06-02-PLAN.md — Login page + auth context + API client + dashboard shell
+- [x] 06-01-PLAN.md — React/Vite scaffold + shadcn init + Go embed + Makefile
+- [x] 06-02-PLAN.md — Login page + auth context + API client + dashboard shell
 - [ ] 06-03-PLAN.md — Upstream status cards + key management table + dialogs + checkpoint
 
 ### Phase 7: CLI
@@ -124,7 +124,26 @@ Plans:
 2. `ocp next` forces upstream rotation and prints confirmation of which upstream is now active; the next proxied request through the relay uses that upstream
 3. `ocp keys` prints all access keys with their limits and cumulative usage in a readable table format
 4. All three commands fail with a clear error message (not a stack trace) when the ocp server is not reachable
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Per-upstream format flag + direct Anthropic passthrough
+- [ ] 08-02-PLAN.md — Model/config error classification (ClassModelNotSupported)
+
+### Phase 8: Upstream Format Flexibility
+**Goal:** ocp can route requests natively to Anthropic-format upstreams without translation, and model/config errors disable the offending upstream rather than retrying indefinitely.
+**Depends on:** Phase 4
+**Requirements:** PRXY-05, ROUT-05
+**Success Criteria:**
+1. An upstream with `format: anthropic` in config receives the original Anthropic request body verbatim (no OpenAI translation); the client receives the upstream's Anthropic response directly
+2. An upstream with `format: openai` (the default) behaves identically to the current translation path — no regression
+3. When an upstream returns a "model not supported" or "invalid model" error (HTTP 5xx with provider-specific error codes), the pool marks it unavailable for the session rather than retrying on every request
+4. `go test ./...` passes with tests covering the direct-passthrough path and the new error classification
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Per-upstream format flag + direct Anthropic passthrough
+- [ ] 08-02-PLAN.md — Model/config error classification (ClassModelNotSupported)
 
 ---
 
@@ -139,13 +158,14 @@ Phase 3: Relay Pipeline (OpenAI)
    / \
 Ph4   Ph5
 Anthro  Mgmt API
-        /    \
-    Ph6        Ph7
-   Portal      CLI
+  |     /    \
+ Ph8  Ph6    Ph7
+Fmt  Portal  CLI
 ```
 
 Phases 4 and 5 are independent of each other once Phase 3 is complete.
 Phases 6 and 7 are independent of each other once Phase 5 is complete.
+Phase 8 depends on Phase 4 (Anthropic translation) and can run independently of 6 and 7.
 
 ---
 
@@ -178,8 +198,10 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | CLI-01 | Phase 7 | `ocp status` — upstream health and round-robin position |
 | CLI-02 | Phase 7 | `ocp next` — force rotate active upstream |
 | CLI-03 | Phase 7 | `ocp keys` — list keys with limits and usage |
+| PRXY-05 | Phase 8 | Per-upstream format flag — direct passthrough for Anthropic-native upstreams |
+| ROUT-05 | Phase 8 | Model/config error classification — mark upstream unavailable on persistent config errors |
 
-**Coverage: 24/24 v1 requirements mapped.** (UPST-04 removed)
+**Coverage: 26/26 v1 requirements mapped.** (UPST-04 removed)
 
 ---
 
@@ -194,6 +216,7 @@ Phases 6 and 7 are independent of each other once Phase 5 is complete.
 | 5. Management API | 0/2 | Planned | — |
 | 6. Web Portal | 0/? | Not started | — |
 | 7. CLI | 0/? | Not started | — |
+| 8. Upstream Format Flexibility | 0/? | Not started | — |
 
 ---
 *Roadmap created: 2026-04-16*
