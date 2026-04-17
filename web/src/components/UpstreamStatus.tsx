@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Pencil, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiFetch } from '@/lib/api'
@@ -8,19 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-
-interface UpstreamInfo {
-  id: number
-  name: string
-  base_url: string
-  enabled: boolean
-  available: boolean
-  model_override?: string
-}
+import EditUpstreamDialog, { type UpstreamInfo } from './EditUpstreamDialog'
 
 export default function UpstreamStatus() {
   const [upstreams, setUpstreams] = useState<UpstreamInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [editTarget, setEditTarget] = useState<UpstreamInfo | null>(null)
 
   const fetchUpstreams = useCallback(async () => {
     setLoading(true)
@@ -107,14 +100,24 @@ export default function UpstreamStatus() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={upstream.enabled}
-                      onCheckedChange={() => handleToggle(upstream)}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {upstream.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={upstream.enabled}
+                        onCheckedChange={() => handleToggle(upstream)}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {upstream.enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Edit upstream"
+                      onClick={() => setEditTarget(upstream)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -122,6 +125,13 @@ export default function UpstreamStatus() {
           })}
         </div>
       )}
+
+      <EditUpstreamDialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+        onUpdated={fetchUpstreams}
+        upstream={editTarget}
+      />
     </div>
   )
 }
