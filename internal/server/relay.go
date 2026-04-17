@@ -170,6 +170,9 @@ func (s *Server) handleRelay(c *gin.Context) {
 				time.Sleep(s.pool.Backoff())
 				rateLimitRetry = true
 				continue // retry same upstream
+			case pool.ClassModelNotSupported:
+				s.pool.Mark(current.ID, false)
+				continue // rotate to next
 			default: // transient
 				continue // rotate to next (do NOT mark unavailable)
 			}

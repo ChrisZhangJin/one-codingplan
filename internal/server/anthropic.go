@@ -160,6 +160,9 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 				time.Sleep(s.pool.Backoff())
 				rateLimitRetry = true
 				continue
+			case pool.ClassModelNotSupported:
+				s.pool.Mark(current.ID, false)
+				continue
 			default:
 				continue
 			}
