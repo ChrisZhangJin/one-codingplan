@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -148,7 +149,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			current.BaseURL+"/v1/chat/completions",
+			pool.GetAdapter(current.Name).OpenAIURL(current.BaseURL),
 			bytes.NewReader(bodyBytes))
 		if err != nil {
 			cancel()
@@ -188,6 +189,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 
 		// Success path — cancel is deferred into the proxy functions so the
 		// context remains live for the duration of body reads (streaming or buffered).
+		log.Printf("[upstream] %s openai stream=%v url=%s", current.Name, rb.Stream, current.BaseURL)
 		if rb.Stream {
 			s.proxyStream(c, resp, cancel, keyID, current.ID, start)
 		} else {

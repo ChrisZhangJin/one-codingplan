@@ -77,7 +77,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			up.BaseURL+"/v1/messages",
+			pool.GetAdapter(up.Name).AnthropicURL(up.BaseURL),
 			bytes.NewReader(bodyBytes))
 		if err != nil {
 			cancel()
@@ -117,6 +117,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 
 		// Success path — passthrough
+		log.Printf("[upstream] %s anthropic stream=%v url=%s", up.Name, req.Stream, up.BaseURL)
 		if req.Stream {
 			s.proxyStream(c, resp, cancel, keyID, up.ID, start)
 		} else {
