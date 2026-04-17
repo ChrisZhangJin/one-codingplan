@@ -127,8 +127,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [x] 08-01-PLAN.md — Per-upstream format flag + direct Anthropic passthrough
-- [x] 08-02-PLAN.md — Model/config error classification (ClassModelNotSupported)
+- [ ] 07-01-PLAN.md — Cobra scaffold + serve migration + pool position field
+- [ ] 07-02-PLAN.md — status, next, keys subcommands
 
 ### Phase 8: Upstream Format Flexibility
 **Goal:** ocp can route requests natively to Anthropic-format upstreams without translation, and model/config errors disable the offending upstream rather than retrying indefinitely.
@@ -215,7 +215,7 @@ Phase 8 depends on Phase 4 (Anthropic translation) and can run independently of 
 | 4. Anthropic Translation | 0/3 | Planned | — |
 | 5. Management API | 0/2 | Planned | — |
 | 6. Web Portal | 0/? | Not started | — |
-| 7. CLI | 0/? | Not started | — |
+| 7. CLI | 0/2 | Planned | — |
 | 8. Upstream Format Flexibility | 0/? | Not started | — |
 
 ---
