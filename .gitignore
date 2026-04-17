@@ -3,3 +3,5 @@ config.yaml
 *.exe
 /ocp
 /dist/
+web/node_modules/
+web/dist/
