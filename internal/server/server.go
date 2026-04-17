@@ -11,13 +11,14 @@ import (
 )
 
 type Server struct {
-	db   *gorm.DB
-	cfg  *config.Config
-	pool *pool.Pool
+	db     *gorm.DB
+	cfg    *config.Config
+	pool   *pool.Pool
+	encKey []byte
 }
 
-func New(db *gorm.DB, cfg *config.Config, p *pool.Pool) *Server {
-	return &Server{db: db, cfg: cfg, pool: p}
+func New(db *gorm.DB, cfg *config.Config, p *pool.Pool, encKey []byte) *Server {
+	return &Server{db: db, cfg: cfg, pool: p, encKey: encKey}
 }
 
 func (s *Server) Engine() *gin.Engine {
@@ -42,6 +43,7 @@ func (s *Server) Engine() *gin.Engine {
 	api.POST("/keys/:id/unblock", s.handleUnblockKey)
 	api.POST("/upstreams/rotate", s.handleRotateUpstream)
 	api.GET("/upstreams", s.handleListUpstreams)
+	api.PATCH("/upstreams/:id", s.handleUpdateUpstream)
 	api.POST("/upstreams/:id/toggle", s.handleToggleUpstream)
 	r.NoRoute(spaHandler())
 	return r

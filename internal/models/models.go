@@ -14,6 +14,8 @@ type Upstream struct {
 	BaseURL   string `gorm:"column:base_url;not null"`
 	APIKeyEnc []byte `gorm:"column:api_key_enc"`
 	Enabled   bool   `gorm:"default:true"`
+	Format        string `gorm:"default:''"`
+	ModelOverride string `gorm:"column:model_override;default:''"`
 }
 
 // DecryptAPIKey returns the plaintext API key using the provided AES key.

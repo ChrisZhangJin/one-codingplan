@@ -81,7 +81,7 @@ func buildPool(t *testing.T, db *gorm.DB, backoff time.Duration) *pool.Pool {
 func buildServer(db *gorm.DB, p *pool.Pool) *server.Server {
 	cfg := &config.Config{}
 	cfg.Server.AdminKey = "admin-key"
-	return server.New(db, cfg, p)
+	return server.New(db, cfg, p, testEncKey)
 }
 
 func chatReqBody(stream bool) []byte {

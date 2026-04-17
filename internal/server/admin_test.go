@@ -33,7 +33,7 @@ func setupAdminTest(t *testing.T) (*server.Server, *gorm.DB) {
 	}
 	cfg := &config.Config{}
 	cfg.Server.AdminKey = "test-admin-key"
-	srv := server.New(db, cfg, nil)
+	srv := server.New(db, cfg, nil, nil)
 	return srv, db
 }
 
@@ -451,7 +451,7 @@ func setupAdminTestWithPool(t *testing.T, entries []pool.UpstreamEntry) (*server
 	cfg.Server.AdminKey = "test-admin-key"
 	p := pool.NewForTest(entries)
 	t.Cleanup(func() { p.Stop() })
-	srv := server.New(db, cfg, p)
+	srv := server.New(db, cfg, p, nil)
 	return srv, db
 }
 

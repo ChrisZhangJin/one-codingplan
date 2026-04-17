@@ -61,10 +61,12 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 		}
 		entries = append(entries, entry{
 			UpstreamEntry: UpstreamEntry{
-				ID:      u.ID,
-				Name:    u.Name,
-				BaseURL: u.BaseURL,
-				APIKey:  apiKey,
+				ID:            u.ID,
+				Name:          u.Name,
+				BaseURL:       u.BaseURL,
+				APIKey:        apiKey,
+				ModelOverride: u.ModelOverride,
+				Format:        u.Format,
 			},
 			available: u.Enabled,
 			enabled:   u.Enabled,
@@ -99,6 +101,8 @@ type UpstreamInfo struct {
 	Enabled       bool   `json:"enabled"`
 	Available     bool   `json:"available"`
 	ModelOverride string `json:"model_override,omitempty"`
+	Format        string `json:"format,omitempty"`
+	MaskedKey     string `json:"masked_key,omitempty"`
 	Position      bool   `json:"position"`
 }
 
@@ -159,10 +163,30 @@ func (p *Pool) List() []UpstreamInfo {
 			Enabled:       e.enabled,
 			Available:     e.available,
 			ModelOverride: e.ModelOverride,
+			Format:        e.Format,
 			Position:      i == p.idx,
 		}
 	}
 	return result
+}
+
+// UpdateEntry updates the editable fields of the pool entry with the given ID.
+// If apiKey is empty, the existing key is preserved.
+func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, format string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.entries {
+		if p.entries[i].ID == id {
+			p.entries[i].Name = name
+			p.entries[i].BaseURL = baseURL
+			if apiKey != "" {
+				p.entries[i].APIKey = apiKey
+			}
+			p.entries[i].ModelOverride = modelOverride
+			p.entries[i].Format = format
+			return
+		}
+	}
 }
 
 // Mark sets the availability of the upstream with the given id.

@@ -60,7 +60,7 @@ var serveCmd = &cobra.Command{
 		p.StartProbeLoop()
 		defer p.Stop()
 
-		srv := server.New(db, cfg, p)
+		srv := server.New(db, cfg, p, encKey)
 		r := srv.Engine()
 
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)

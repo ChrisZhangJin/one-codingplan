@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"one-codingplan/internal/crypto"
 	"one-codingplan/internal/models"
 )
 
@@ -274,6 +275,105 @@ func (s *Server) handleDeleteKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "key deleted"})
 }
 
+type patchUpstreamRequest struct {
+	Name          *string `json:"name"`
+	BaseURL       *string `json:"base_url"`
+	APIKey        *string `json:"api_key"`
+	Format        *string `json:"format"`
+	ModelOverride *string `json:"model_override"`
+}
+
+// maskAPIKey masks an API key showing last 4 chars with *** prefix.
+func maskAPIKey(key string) string {
+	if len(key) <= 4 {
+		return "***"
+	}
+	return "***" + key[len(key)-4:]
+}
+
+func (s *Server) handleUpdateUpstream(c *gin.Context) {
+	id := c.Param("id")
+	var upstream models.Upstream
+	if err := s.db.First(&upstream, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upstream not found"})
+		return
+	}
+
+	var req patchUpstreamRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := map[string]any{}
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.BaseURL != nil {
+		updates["base_url"] = *req.BaseURL
+	}
+	if req.Format != nil {
+		updates["format"] = *req.Format
+	}
+	if req.ModelOverride != nil {
+		updates["model_override"] = *req.ModelOverride
+	}
+	if req.APIKey != nil && *req.APIKey != "" {
+		enc, err := crypto.Encrypt(s.encKey, *req.APIKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encrypt api key"})
+			return
+		}
+		updates["api_key_enc"] = enc
+	}
+
+	if len(updates) > 0 {
+		if err := s.db.Model(&upstream).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update upstream"})
+			return
+		}
+	}
+
+	// Reload to get fresh state
+	if err := s.db.First(&upstream, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reload upstream"})
+		return
+	}
+
+	// Sync pool in-memory state
+	plainKey, err := upstream.DecryptAPIKey(s.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt api key"})
+		return
+	}
+	// If a new key was provided use it directly; otherwise use the decrypted existing one
+	keyForPool := plainKey
+	if req.APIKey != nil && *req.APIKey != "" {
+		keyForPool = *req.APIKey
+	}
+	s.pool.UpdateEntry(upstream.ID, upstream.Name, upstream.BaseURL, keyForPool, upstream.ModelOverride, upstream.Format)
+
+	info := s.pool.List()
+	maskedKey := maskAPIKey(plainKey)
+	// find the entry in pool list to get current state
+	for _, u := range info {
+		if u.ID == upstream.ID {
+			u.MaskedKey = maskedKey
+			c.JSON(http.StatusOK, u)
+			return
+		}
+	}
+	// fallback response if not found in pool (shouldn't happen)
+	c.JSON(http.StatusOK, gin.H{
+		"id":             upstream.ID,
+		"name":           upstream.Name,
+		"base_url":       upstream.BaseURL,
+		"format":         upstream.Format,
+		"model_override": upstream.ModelOverride,
+		"masked_key":     maskedKey,
+	})
+}
+
 func (s *Server) handleToggleUpstream(c *gin.Context) {
 	id := c.Param("id")
 
@@ -304,5 +404,23 @@ func (s *Server) handleRotateUpstream(c *gin.Context) {
 }
 
 func (s *Server) handleListUpstreams(c *gin.Context) {
-	c.JSON(http.StatusOK, s.pool.List())
+	list := s.pool.List()
+
+	// Enrich with masked API keys from DB
+	var dbUpstreams []models.Upstream
+	if err := s.db.Find(&dbUpstreams).Error; err == nil {
+		byID := make(map[uint]models.Upstream, len(dbUpstreams))
+		for _, u := range dbUpstreams {
+			byID[u.ID] = u
+		}
+		for i := range list {
+			if u, ok := byID[list[i].ID]; ok {
+				if plain, err := u.DecryptAPIKey(s.encKey); err == nil {
+					list[i].MaskedKey = maskAPIKey(plain)
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, list)
 }
