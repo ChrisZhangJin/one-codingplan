@@ -65,25 +65,20 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 
 	seen := make(map[uint]bool)
 	var current *pool.UpstreamEntry
-	rateLimitRetry := false
 
 	for {
-		if rateLimitRetry && current != nil {
-			rateLimitRetry = false
-		} else {
-			up, err := s.pool.Select(allowedUpstreams)
-			if errors.Is(err, pool.ErrNoUpstreams) {
-				break
-			}
-			if err != nil {
-				break
-			}
-			if seen[up.ID] {
-				break
-			}
-			seen[up.ID] = true
-			current = up
+		up, err := s.pool.Select(allowedUpstreams)
+		if errors.Is(err, pool.ErrNoUpstreams) {
+			break
 		}
+		if err != nil {
+			break
+		}
+		if seen[up.ID] {
+			break
+		}
+		seen[up.ID] = true
+		current = up
 
 		var resp *http.Response
 		var cancel context.CancelFunc
@@ -157,8 +152,8 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 				s.pool.Mark(current.ID, false)
 				continue
 			case pool.ClassRateLimited:
+				delete(seen, current.ID) // allow retrying after backoff
 				time.Sleep(s.pool.Backoff())
-				rateLimitRetry = true
 				continue
 			case pool.ClassModelNotSupported:
 				s.pool.Mark(current.ID, false)

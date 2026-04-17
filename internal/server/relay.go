@@ -34,6 +34,7 @@ var errNoUpstream = gin.H{
 // hopByHopHeaders are headers that must not be forwarded to the upstream.
 var hopByHopHeaders = []string{
 	"Connection", "Keep-Alive", "Transfer-Encoding", "TE", "Trailer", "Upgrade",
+	"Accept-Encoding", // let relayClient negotiate compression transparently
 }
 
 func cloneHeaders(src http.Header) http.Header {
@@ -116,27 +117,21 @@ func (s *Server) handleRelay(c *gin.Context) {
 
 	seen := make(map[uint]bool)
 	var current *pool.UpstreamEntry
-	rateLimitRetry := false
 
 	for {
-		if rateLimitRetry && current != nil {
-			// retry same upstream after backoff (D-05 rate-limit)
-			rateLimitRetry = false
-		} else {
-			up, err := s.pool.Select(allowedUpstreams)
-			if errors.Is(err, pool.ErrNoUpstreams) {
-				break
-			}
-			if err != nil {
-				break
-			}
-			if seen[up.ID] {
-				// Already tried this upstream — exhausted the pool
-				break
-			}
-			seen[up.ID] = true
-			current = up
+		up, err := s.pool.Select(allowedUpstreams)
+		if errors.Is(err, pool.ErrNoUpstreams) {
+			break
 		}
+		if err != nil {
+			break
+		}
+		if seen[up.ID] {
+			// Already tried this upstream — exhausted the pool
+			break
+		}
+		seen[up.ID] = true
+		current = up
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -167,8 +162,8 @@ func (s *Server) handleRelay(c *gin.Context) {
 				s.pool.Mark(current.ID, false)
 				continue // rotate to next
 			case pool.ClassRateLimited:
+				delete(seen, current.ID) // allow retrying after backoff
 				time.Sleep(s.pool.Backoff())
-				rateLimitRetry = true
 				continue // retry same upstream
 			case pool.ClassModelNotSupported:
 				s.pool.Mark(current.ID, false)
