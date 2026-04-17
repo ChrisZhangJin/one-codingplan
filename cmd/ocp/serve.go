@@ -38,21 +38,12 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("migrate: %w", err)
 		}
 
-		if err := database.SyncUpstreams(db, cfg.Upstreams, encKey); err != nil {
-			return fmt.Errorf("sync upstreams: %w", err)
-		}
-
 		poolCfg := &pool.Config{
 			RateLimitBackoff: cfg.PoolBackoff(),
 		}
 		p, err := pool.New(db, encKey, poolCfg)
 		if err != nil {
 			return fmt.Errorf("init pool: %w", err)
-		}
-		for _, u := range cfg.Upstreams {
-			if u.ModelOverride != "" {
-				p.SetModelOverride(u.Name, u.ModelOverride)
-			}
 		}
 		p.StartProbeLoop()
 		defer p.Stop()

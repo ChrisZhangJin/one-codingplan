@@ -9,10 +9,9 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig     `mapstructure:"server"`
-	Database  DatabaseConfig   `mapstructure:"database"`
-	Pool      PoolConfig       `mapstructure:"pool"`
-	Upstreams []UpstreamConfig `mapstructure:"upstreams"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Pool     PoolConfig     `mapstructure:"pool"`
 }
 
 type PoolConfig struct {
@@ -38,14 +37,6 @@ type DatabaseConfig struct {
 	Path string `mapstructure:"path"`
 }
 
-type UpstreamConfig struct {
-	Name          string `mapstructure:"name"`
-	BaseURL       string `mapstructure:"base_url"`
-	APIKey        string `mapstructure:"api_key"`
-	Enabled       bool   `mapstructure:"enabled"`
-	ModelOverride string `mapstructure:"model_override"`
-}
-
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(configPath)
@@ -66,10 +57,6 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	// Explicitly override critical fields to handle Viper AutomaticEnv + Unmarshal edge case.
-	// Note: the Upstreams slice is not env-overridable via OCP_UPSTREAMS_* because Viper does
-	// not support slice-of-struct env injection. Upstream API keys must be supplied via the
-	// config file or stored directly in the database.
 	cfg.Server.Port = v.GetInt("server.port")
 	cfg.Server.AdminKey = v.GetString("server.admin_key")
 	cfg.Database.Path = v.GetString("database.path")

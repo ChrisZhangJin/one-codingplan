@@ -12,11 +12,6 @@ server:
   admin_key: "test-admin-key"
 database:
   path: "/tmp/test.db"
-upstreams:
-  - name: kimi
-    base_url: https://api.moonshot.ai
-    api_key: "sk-test"
-    enabled: true
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
@@ -37,12 +32,6 @@ upstreams:
 	}
 	if cfg.Database.Path != "/tmp/test.db" {
 		t.Errorf("Database.Path = %q, want /tmp/test.db", cfg.Database.Path)
-	}
-	if len(cfg.Upstreams) != 1 {
-		t.Fatalf("len(Upstreams) = %d, want 1", len(cfg.Upstreams))
-	}
-	if cfg.Upstreams[0].Name != "kimi" {
-		t.Errorf("Upstreams[0].Name = %q, want kimi", cfg.Upstreams[0].Name)
 	}
 }
 
