@@ -32,6 +32,7 @@ var adapters = map[string]ProviderAdapter{}
 
 func init() {
 	adapters["minimax"] = MinimaxAdapter{}
+	adapters["mimo"] = MinimaxAdapter{}
 }
 
 // GetAdapter returns the ProviderAdapter for the given provider name.
