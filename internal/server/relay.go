@@ -107,6 +107,20 @@ type chatResponse struct {
 	} `json:"usage"`
 }
 
+// rewriteModel replaces the "model" field in a JSON request body.
+func rewriteModel(body []byte, model string) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	m["model"] = b
+	return json.Marshal(m)
+}
+
 // handleRelay is the main relay handler: reads the body, authenticates (via middleware),
 // and forwards the request to an upstream with failover.
 func (s *Server) handleRelay(c *gin.Context) {
@@ -147,10 +161,17 @@ func (s *Server) handleRelay(c *gin.Context) {
 		seen[up.ID] = true
 		current = up
 
+		sendBody := bodyBytes
+		if current.ModelOverride != "" {
+			if rewritten, err := rewriteModel(bodyBytes, current.ModelOverride); err == nil {
+				sendBody = rewritten
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			pool.GetAdapter(current.Name).OpenAIURL(current.BaseURL),
-			bytes.NewReader(bodyBytes))
+			bytes.NewReader(sendBody))
 		if err != nil {
 			cancel()
 			continue

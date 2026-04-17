@@ -75,10 +75,17 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 		seen[up.ID] = true
 
+		sendBody := bodyBytes
+		if up.ModelOverride != "" {
+			if rewritten, err := rewriteModel(bodyBytes, up.ModelOverride); err == nil {
+				sendBody = rewritten
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			pool.GetAdapter(up.Name).AnthropicURL(up.BaseURL),
-			bytes.NewReader(bodyBytes))
+			bytes.NewReader(sendBody))
 		if err != nil {
 			cancel()
 			continue
