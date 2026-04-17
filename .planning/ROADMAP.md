@@ -107,8 +107,13 @@ Plans:
 2. The upstream status section shows each configured provider with its current health state (healthy / cooldown / dead) and enabled/disabled toggle
 3. The key management table lists all access keys with status, limits, and usage; admin can create a new key, block/unblock a key, and view its details without leaving the page
 4. The React SPA is served entirely from the compiled Go binary (no separate `dist/` directory required at runtime); the binary size increases by the portal bundle but no external files are needed
-**Plans:** TBD
+**Plans:** 3 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 06-01-PLAN.md — React/Vite scaffold + shadcn init + Go embed + Makefile
+- [ ] 06-02-PLAN.md — Login page + auth context + API client + dashboard shell
+- [ ] 06-03-PLAN.md — Upstream status cards + key management table + dialogs + checkpoint
 
 ### Phase 7: CLI
 **Goal:** An admin can run `ocp status`, `ocp next`, and `ocp keys` from the terminal against a running ocp instance and get actionable output, using the same binary as the server.
