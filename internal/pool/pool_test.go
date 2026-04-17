@@ -262,20 +262,6 @@ func TestMark_Available(t *testing.T) {
 	}
 }
 
-func TestSetFormat(t *testing.T) {
-	p := pool.NewForTest([]pool.UpstreamEntry{{ID: 1, Name: "mimo"}})
-	p.SetFormat("mimo", "anthropic")
-	e, err := p.Select(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.Format != "anthropic" {
-		t.Fatalf("want Format=anthropic, got %q", e.Format)
-	}
-	// Unknown name: no-op
-	p.SetFormat("nonexistent", "anthropic")
-}
-
 func TestSelect_Concurrent(t *testing.T) {
 	p := newTestPool(t, "a", "b")
 	var wg sync.WaitGroup

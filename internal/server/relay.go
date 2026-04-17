@@ -95,10 +95,14 @@ type reqBody struct {
 }
 
 // chatResponse is used to extract token counts from a non-streaming response.
+// Supports both OpenAI format (prompt_tokens/completion_tokens) and
+// Anthropic format (input_tokens/output_tokens).
 type chatResponse struct {
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
+		InputTokens      int `json:"input_tokens"`
+		OutputTokens     int `json:"output_tokens"`
 	} `json:"usage"`
 }
 
@@ -222,12 +226,18 @@ func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context
 	contentType := resp.Header.Get("Content-Type")
 	c.Data(resp.StatusCode, contentType, body)
 
-	// Extract token counts
+	// Extract token counts — support both OpenAI and Anthropic response formats.
 	var cr chatResponse
 	json.Unmarshal(body, &cr) //nolint:errcheck
-	s.logUsage(keyID, upstreamID, true,
-		cr.Usage.PromptTokens, cr.Usage.CompletionTokens,
-		time.Since(start))
+	inTokens := cr.Usage.PromptTokens
+	if inTokens == 0 {
+		inTokens = cr.Usage.InputTokens
+	}
+	outTokens := cr.Usage.CompletionTokens
+	if outTokens == 0 {
+		outTokens = cr.Usage.OutputTokens
+	}
+	s.logUsage(keyID, upstreamID, true, inTokens, outTokens, time.Since(start))
 }
 
 // logUsage writes a UsageRecord to the database asynchronously (D-14).

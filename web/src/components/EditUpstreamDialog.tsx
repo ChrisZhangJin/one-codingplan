@@ -20,7 +20,6 @@ export interface UpstreamInfo {
   enabled: boolean
   available: boolean
   model_override?: string
-  format?: string
   masked_key?: string
 }
 
@@ -40,7 +39,6 @@ export default function EditUpstreamDialog({
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
-  const [format, setFormat] = useState('')
   const [modelOverride, setModelOverride] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -49,7 +47,6 @@ export default function EditUpstreamDialog({
       setName(upstream.name)
       setBaseUrl(upstream.base_url)
       setApiKey('')
-      setFormat(upstream.format ?? '')
       setModelOverride(upstream.model_override ?? '')
     }
   }, [upstream])
@@ -66,7 +63,6 @@ export default function EditUpstreamDialog({
       if (name !== upstream.name) body.name = name
       if (baseUrl !== upstream.base_url) body.base_url = baseUrl
       if (apiKey !== '') body.api_key = apiKey
-      if (format !== (upstream.format ?? '')) body.format = format
       if (modelOverride !== (upstream.model_override ?? '')) body.model_override = modelOverride
 
       await apiFetch(`/api/upstreams/${upstream.id}`, {
@@ -115,15 +111,6 @@ export default function EditUpstreamDialog({
               placeholder={upstream?.masked_key ? `Current: ${upstream.masked_key}` : 'Leave blank to keep existing'}
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="edit-upstream-format">Format</Label>
-            <Input
-              id="edit-upstream-format"
-              placeholder="openai, anthropic, or blank"
-              value={format}
-              onChange={e => setFormat(e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">

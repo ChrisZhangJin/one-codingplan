@@ -73,11 +73,61 @@ func openAIResponseBody(content, finishReason string, promptTokens, completionTo
 	return bs
 }
 
+// anthropicResponseBody builds a minimal Anthropic-format response JSON.
+func anthropicResponseBody(content string, inputTokens, outputTokens int) []byte {
+	r := map[string]interface{}{
+		"id":   "msg_test_01",
+		"type": "message",
+		"role": "assistant",
+		"model": "claude-opus-4-5",
+		"content": []map[string]interface{}{
+			{"type": "text", "text": content},
+		},
+		"stop_reason": "end_turn",
+		"usage": map[string]interface{}{
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+		},
+	}
+	bs, _ := json.Marshal(r)
+	return bs
+}
+
+// fakeAnthropicUpstreamServer returns a test server that responds with Anthropic-format JSON.
+func fakeAnthropicUpstreamServer(responseBody []byte) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write(responseBody)
+	}))
+}
+
+// fakeAnthropicSSEUpstream returns a test server that sends Anthropic SSE events.
+func fakeAnthropicSSEUpstream() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		flusher := w.(http.Flusher)
+		events := []string{
+			"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-opus-4-5\",\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+			"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+			"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n",
+			"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+			"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}\n\n",
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+		}
+		for _, e := range events {
+			fmt.Fprint(w, e)
+			flusher.Flush()
+		}
+	}))
+}
+
 // --- Tests ---
 
 func TestAnthropicRelay_NonStream(t *testing.T) {
 	db := setupTestDB(t)
-	upstream := fakeOpenAIUpstream(openAIResponseBody("Hello back!", "stop", 10, 5))
+	upstream := fakeAnthropicUpstreamServer(anthropicResponseBody("Hello back!", 10, 5))
 	defer upstream.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
@@ -105,7 +155,6 @@ func TestAnthropicRelay_NonStream(t *testing.T) {
 	if resp["role"] != "assistant" {
 		t.Errorf("expected role=assistant, got %v", resp["role"])
 	}
-	// D-03: model echo
 	if resp["model"] != "claude-opus-4-5" {
 		t.Errorf("expected model=claude-opus-4-5, got %v", resp["model"])
 	}
@@ -124,13 +173,7 @@ func TestAnthropicRelay_NonStream(t *testing.T) {
 
 func TestAnthropicRelay_Stream(t *testing.T) {
 	db := setupTestDB(t)
-	frames := []string{
-		`{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}`,
-		`{"choices":[{"delta":{"content":" World"},"finish_reason":null}]}`,
-		`{"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}`,
-		`[DONE]`,
-	}
-	upstream := fakeOpenAIStreamingUpstream(frames)
+	upstream := fakeAnthropicSSEUpstream()
 	defer upstream.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
@@ -198,17 +241,13 @@ func TestAnthropicRelay_Failover(t *testing.T) {
 	}))
 	defer fake500.Close()
 
-	fake200 := fakeOpenAIUpstream(openAIResponseBody("ok", "stop", 5, 3))
-	defer fake200.Close()
-	// Wrap to count calls
 	calls200Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls200, 1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write(openAIResponseBody("ok", "stop", 5, 3))
+		w.Write(anthropicResponseBody("ok", 5, 3))
 	}))
 	defer calls200Server.Close()
-	fake200.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
 	// Seed 200-server first (lower ID) so pool selects 500-server first
@@ -268,7 +307,7 @@ func TestAnthropicRelay_AllFail(t *testing.T) {
 
 func TestAnthropicRelay_Usage(t *testing.T) {
 	db := setupTestDB(t)
-	upstream := fakeOpenAIUpstream(openAIResponseBody("hi", "stop", 10, 5))
+	upstream := fakeAnthropicUpstreamServer(anthropicResponseBody("hi", 10, 5))
 	defer upstream.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
@@ -301,93 +340,6 @@ func TestAnthropicRelay_Usage(t *testing.T) {
 	}
 	if rec.UpstreamID != u.ID {
 		t.Errorf("expected UpstreamID=%d, got %d", u.ID, rec.UpstreamID)
-	}
-}
-
-func TestAnthropicRelay_ModelOverride(t *testing.T) {
-	db := setupTestDB(t)
-
-	var capturedBody []byte
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		w.Write(openAIResponseBody("hi", "stop", 5, 3))
-	}))
-	defer upstream.Close()
-
-	seedAccessKey(t, db, "test-token-abc", true)
-	seedUpstream(t, db, "up1", upstream.URL)
-	p := buildPool(t, db, 10*time.Millisecond)
-	// D-01: apply model override
-	p.SetModelOverride("up1", "qwen-max")
-	engine := buildServer(db, p).Engine()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
-		bytes.NewReader(anthropicReqBody(false)))
-	req.Header.Set("Authorization", "Bearer test-token-abc")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// D-01: verify upstream received the override model
-	var forwarded map[string]interface{}
-	if err := json.Unmarshal(capturedBody, &forwarded); err != nil {
-		t.Fatalf("failed to parse forwarded body: %v", err)
-	}
-	if forwarded["model"] != "qwen-max" {
-		t.Errorf("expected forwarded model=qwen-max, got %v", forwarded["model"])
-	}
-
-	// D-03: verify response echoes original model name
-	var resp map[string]interface{}
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["model"] != "claude-opus-4-5" {
-		t.Errorf("expected response model=claude-opus-4-5, got %v", resp["model"])
-	}
-}
-
-func TestAnthropicRelay_ModelStrip(t *testing.T) {
-	db := setupTestDB(t)
-
-	var capturedBody []byte
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		w.Write(openAIResponseBody("hi", "stop", 5, 3))
-	}))
-	defer upstream.Close()
-
-	seedAccessKey(t, db, "test-token-abc", true)
-	seedUpstream(t, db, "up1", upstream.URL)
-	p := buildPool(t, db, 10*time.Millisecond)
-	// No model override set — D-02: model field should be absent/empty
-	engine := buildServer(db, p).Engine()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
-		bytes.NewReader(anthropicReqBody(false)))
-	req.Header.Set("Authorization", "Bearer test-token-abc")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// D-02: verify upstream did NOT receive a claude- model name
-	var forwarded map[string]interface{}
-	if err := json.Unmarshal(capturedBody, &forwarded); err != nil {
-		t.Fatalf("failed to parse forwarded body: %v", err)
-	}
-	model, hasModel := forwarded["model"]
-	if hasModel && strings.HasPrefix(fmt.Sprintf("%v", model), "claude-") {
-		t.Errorf("expected model not to start with 'claude-', got %v", model)
 	}
 }
 
@@ -425,175 +377,8 @@ func TestAnthropicRelay_InvalidBody(t *testing.T) {
 	}
 }
 
-func TestAnthropicRelay_ToolRoundTrip(t *testing.T) {
-	db := setupTestDB(t)
-
-	var capturedBody []byte
-	// Upstream returns a tool_calls response
-	toolCallResp := map[string]interface{}{
-		"id":    "chatcmpl-tool",
-		"model": "qwen-max",
-		"choices": []map[string]interface{}{
-			{
-				"message": map[string]interface{}{
-					"role":    "assistant",
-					"content": "",
-					"tool_calls": []map[string]interface{}{
-						{
-							"id":   "call_abc123",
-							"type": "function",
-							"function": map[string]interface{}{
-								"name":      "get_weather",
-								"arguments": `{"location":"Beijing"}`,
-							},
-						},
-					},
-				},
-				"finish_reason": "tool_calls",
-			},
-		},
-		"usage": map[string]interface{}{
-			"prompt_tokens":     15,
-			"completion_tokens": 8,
-		},
-	}
-	toolCallBody, _ := json.Marshal(toolCallResp)
-
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		w.Write(toolCallBody)
-	}))
-	defer upstream.Close()
-
-	// Build request with tool definition + tool_use in assistant + tool_result in user
-	anthropicReq := map[string]interface{}{
-		"model": "claude-opus-4-5",
-		"messages": []map[string]interface{}{
-			{
-				"role":    "user",
-				"content": "What's the weather in Beijing?",
-			},
-			{
-				"role": "assistant",
-				"content": []map[string]interface{}{
-					{
-						"type":  "tool_use",
-						"id":    "call_abc123",
-						"name":  "get_weather",
-						"input": map[string]interface{}{"location": "Beijing"},
-					},
-				},
-			},
-			{
-				"role": "user",
-				"content": []map[string]interface{}{
-					{
-						"type":        "tool_result",
-						"tool_use_id": "call_abc123",
-						"content":     "Sunny, 25°C",
-					},
-				},
-			},
-		},
-		"max_tokens": 1024,
-		"tools": []map[string]interface{}{
-			{
-				"name":        "get_weather",
-				"description": "Get current weather",
-				"input_schema": map[string]interface{}{
-					"type":       "object",
-					"properties": map[string]interface{}{"location": map[string]interface{}{"type": "string"}},
-				},
-			},
-		},
-	}
-	reqBody, _ := json.Marshal(anthropicReq)
-
-	seedAccessKey(t, db, "test-token-abc", true)
-	seedUpstream(t, db, "up1", upstream.URL)
-	p := buildPool(t, db, 10*time.Millisecond)
-	engine := buildServer(db, p).Engine()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
-		bytes.NewReader(reqBody))
-	req.Header.Set("Authorization", "Bearer test-token-abc")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// Verify forwarded request has tool_calls (D-06) and role:tool message (D-07)
-	var forwarded map[string]interface{}
-	if err := json.Unmarshal(capturedBody, &forwarded); err != nil {
-		t.Fatalf("failed to parse forwarded body: %v", err)
-	}
-	messages, ok := forwarded["messages"].([]interface{})
-	if !ok || len(messages) == 0 {
-		t.Fatalf("expected messages in forwarded request, got %v", forwarded["messages"])
-	}
-	// Find the assistant message with tool_calls
-	foundToolCalls := false
-	foundToolRole := false
-	for _, msg := range messages {
-		m, ok := msg.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if tcs, ok := m["tool_calls"]; ok && tcs != nil {
-			foundToolCalls = true
-		}
-		if m["role"] == "tool" {
-			foundToolRole = true
-			if m["tool_call_id"] != "call_abc123" {
-				t.Errorf("expected tool_call_id=call_abc123, got %v", m["tool_call_id"])
-			}
-		}
-	}
-	if !foundToolCalls {
-		t.Error("expected forwarded request to contain tool_calls (D-06)")
-	}
-	if !foundToolRole {
-		t.Error("expected forwarded request to contain role:tool message (D-07)")
-	}
-
-	// Verify response has tool_use content block with correct ID
-	var resp map[string]interface{}
-	json.NewDecoder(w.Body).Decode(&resp)
-	content, ok := resp["content"].([]interface{})
-	if !ok || len(content) == 0 {
-		t.Fatalf("expected content array in response, got %v", resp["content"])
-	}
-	foundToolUse := false
-	for _, block := range content {
-		b, ok := block.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if b["type"] == "tool_use" {
-			foundToolUse = true
-			if b["id"] != "call_abc123" {
-				t.Errorf("expected tool_use id=call_abc123, got %v", b["id"])
-			}
-			if b["name"] != "get_weather" {
-				t.Errorf("expected tool_use name=get_weather, got %v", b["name"])
-			}
-		}
-	}
-	if !foundToolUse {
-		t.Error("expected tool_use content block in Anthropic response")
-	}
-	if resp["stop_reason"] != "tool_use" {
-		t.Errorf("expected stop_reason=tool_use, got %v", resp["stop_reason"])
-	}
-}
-
-// TestAnthropicPassthrough_NonStream verifies that an upstream with Format=="anthropic"
-// receives the raw Anthropic body verbatim at /v1/messages, and the response is forwarded verbatim.
+// TestAnthropicPassthrough_NonStream verifies that upstream receives the raw Anthropic body
+// verbatim at /v1/messages, and the response is forwarded verbatim.
 func TestAnthropicPassthrough_NonStream(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -625,7 +410,6 @@ func TestAnthropicPassthrough_NonStream(t *testing.T) {
 	seedAccessKey(t, db, "test-token-abc", true)
 	seedUpstream(t, db, "mimo", upstream.URL)
 	p := buildPool(t, db, 10*time.Millisecond)
-	p.SetFormat("mimo", "anthropic")
 	engine := buildServer(db, p).Engine()
 
 	reqBody := anthropicReqBody(false)
@@ -638,7 +422,7 @@ func TestAnthropicPassthrough_NonStream(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	// Upstream must have received request at /v1/messages (passthrough path)
+	// Upstream must have received request at /v1/messages
 	if capturedPath != "/v1/messages" {
 		t.Errorf("expected upstream path=/v1/messages, got %q", capturedPath)
 	}
@@ -652,53 +436,6 @@ func TestAnthropicPassthrough_NonStream(t *testing.T) {
 	// Response must be forwarded verbatim (contains passthrough JSON)
 	if !bytes.Contains(w.Body.Bytes(), []byte("passthrough response")) {
 		t.Errorf("expected verbatim passthrough response in body, got: %s", w.Body.String())
-	}
-}
-
-// TestAnthropicTranslate_NonStream verifies that an upstream with Format=="" receives
-// an OpenAI-translated body at /v1/chat/completions.
-func TestAnthropicTranslate_NonStream(t *testing.T) {
-	db := setupTestDB(t)
-
-	var capturedPath string
-	var capturedBody []byte
-
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		capturedBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		w.Write(openAIResponseBody("translated response", "stop", 10, 5))
-	}))
-	defer upstream.Close()
-
-	seedAccessKey(t, db, "test-token-abc", true)
-	seedUpstream(t, db, "up1", upstream.URL)
-	p := buildPool(t, db, 10*time.Millisecond)
-	// No SetFormat call — default empty format means translate path
-	engine := buildServer(db, p).Engine()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
-		bytes.NewReader(anthropicReqBody(false)))
-	req.Header.Set("Authorization", "Bearer test-token-abc")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	// Upstream must have received request at /v1/chat/completions (translate path)
-	if capturedPath != "/v1/chat/completions" {
-		t.Errorf("expected upstream path=/v1/chat/completions, got %q", capturedPath)
-	}
-	// Forwarded body must contain "messages" key (OpenAI format)
-	var forwarded map[string]interface{}
-	if err := json.Unmarshal(capturedBody, &forwarded); err != nil {
-		t.Fatalf("failed to parse forwarded body: %v", err)
-	}
-	if _, ok := forwarded["messages"]; !ok {
-		t.Errorf("expected OpenAI 'messages' key in forwarded body, got %v", forwarded)
 	}
 }
 
@@ -716,16 +453,15 @@ func TestAnthropicPassthrough_UpstreamError(t *testing.T) {
 	fake200 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write(openAIResponseBody("ok from openai upstream", "stop", 5, 3))
+		w.Write(anthropicResponseBody("ok from upstream", 5, 3))
 	}))
 	defer fake200.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
-	// Seed 200 upstream first (lower ID) so pool selects 500 (anthropic) first in round-robin
+	// Seed 200 upstream first (lower ID) so pool selects 500 upstream first in round-robin
 	seedUpstream(t, db, "up-ok", fake200.URL)
-	seedUpstream(t, db, "up-500-anthropic", fake500.URL)
+	seedUpstream(t, db, "up-500", fake500.URL)
 	p := buildPool(t, db, 10*time.Millisecond)
-	p.SetFormat("up-500-anthropic", "anthropic")
 	engine := buildServer(db, p).Engine()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages",

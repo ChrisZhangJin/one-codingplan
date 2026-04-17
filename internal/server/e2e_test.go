@@ -194,15 +194,22 @@ func TestE2E_OpenAI_Auth_Invalid(t *testing.T) {
 	}
 }
 
-// ---- Anthropic relay (translate path) --------------------------------------
+// ---- Anthropic relay (passthrough) -----------------------------------------
 
-func TestE2E_Anthropic_NonStream_Translate(t *testing.T) {
+func TestE2E_Anthropic_NonStream_Passthrough(t *testing.T) {
 	var capturedPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write(openAIResponseBody("response from oai upstream", "stop", 10, 6))
+		body := map[string]interface{}{
+			"id": "msg_e2e", "type": "message", "role": "assistant",
+			"model":       "claude-opus-4-5",
+			"content":     []map[string]interface{}{{"type": "text", "text": "passthrough reply"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 6},
+		}
+		json.NewEncoder(w).Encode(body)
 	}))
 	defer upstream.Close()
 
@@ -220,11 +227,11 @@ func TestE2E_Anthropic_NonStream_Translate(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
-	// Upstream must have been called at /v1/chat/completions (OpenAI translation)
-	if capturedPath != "/v1/chat/completions" {
-		t.Errorf("expected translate path /v1/chat/completions, upstream got %q", capturedPath)
+	// Upstream must have been called at /v1/messages (passthrough)
+	if capturedPath != "/v1/messages" {
+		t.Errorf("expected passthrough path /v1/messages, upstream got %q", capturedPath)
 	}
-	// Response must be Anthropic-format
+	// Response must be Anthropic-format (forwarded verbatim)
 	m := readJSON(t, resp.Body)
 	if m["type"] != "message" {
 		t.Errorf("expected type=message, got %v", m["type"])
@@ -280,7 +287,6 @@ func TestE2E_Anthropic_Passthrough_FormatField(t *testing.T) {
 	seedAccessKey(t, gormDB, "e2e-token", true)
 	seedUpstream(t, gormDB, "mimo", upstream.URL)
 	p := buildPool(t, gormDB, 10*time.Millisecond)
-	p.SetFormat("mimo", "anthropic") // phase-08 feature
 	ts := httptest.NewServer(buildServer(gormDB, p).Engine())
 	defer ts.Close()
 
@@ -307,55 +313,42 @@ func TestE2E_Anthropic_Passthrough_FormatField(t *testing.T) {
 	}
 }
 
-func TestE2E_Anthropic_PassthroughVsTranslate_PathDiffers(t *testing.T) {
-	// Two upstreams in the same pool: one passthrough (anthropic), one translate (openai).
-	// First request should hit the first upstream.  Both must target the right path.
+func TestE2E_Anthropic_BothUpstreams_ReceiveMessagesPath(t *testing.T) {
+	// Two upstreams in the same pool: both must receive requests at /v1/messages (passthrough).
 
-	passthroughCalled := int32(0)
-	translateCalled := int32(0)
+	up1Called := int32(0)
+	up2Called := int32(0)
 
-	passthroughUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/messages" {
-			// Wrong path for passthrough upstream
-			w.WriteHeader(500)
-			fmt.Fprintf(w, "wrong path: %s", r.URL.Path)
-			return
-		}
-		atomic.AddInt32(&passthroughCalled, 1)
-		resp := map[string]interface{}{
-			"id": "msg_pt", "type": "message", "role": "assistant",
-			"model":       "claude-opus-4-5",
-			"content":     []map[string]interface{}{{"type": "text", "text": "pt"}},
-			"stop_reason": "end_turn",
-			"usage":       map[string]interface{}{"input_tokens": 1, "output_tokens": 1},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer passthroughUpstream.Close()
+	makeUpstream := func(counter *int32) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/messages" {
+				w.WriteHeader(500)
+				fmt.Fprintf(w, "wrong path: %s", r.URL.Path)
+				return
+			}
+			atomic.AddInt32(counter, 1)
+			resp := map[string]interface{}{
+				"id": "msg_ok", "type": "message", "role": "assistant",
+				"model":       "claude-opus-4-5",
+				"content":     []map[string]interface{}{{"type": "text", "text": "ok"}},
+				"stop_reason": "end_turn",
+				"usage":       map[string]interface{}{"input_tokens": 1, "output_tokens": 1},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+		}))
+	}
 
-	translateUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			w.WriteHeader(500)
-			fmt.Fprintf(w, "wrong path: %s", r.URL.Path)
-			return
-		}
-		atomic.AddInt32(&translateCalled, 1)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"choices": []map[string]interface{}{{"message": map[string]interface{}{"role": "assistant", "content": "tr"}, "finish_reason": "stop"}},
-			"usage":   map[string]interface{}{"prompt_tokens": 1, "completion_tokens": 1},
-		})
-	}))
-	defer translateUpstream.Close()
+	up1 := makeUpstream(&up1Called)
+	defer up1.Close()
+	up2 := makeUpstream(&up2Called)
+	defer up2.Close()
 
 	gormDB := setupTestDB(t)
 	seedAccessKey(t, gormDB, "e2e-token", true)
-	seedUpstream(t, gormDB, "mimo", passthroughUpstream.URL)
-	seedUpstream(t, gormDB, "kimi", translateUpstream.URL)
+	seedUpstream(t, gormDB, "up1", up1.URL)
+	seedUpstream(t, gormDB, "up2", up2.URL)
 	p := buildPool(t, gormDB, 10*time.Millisecond)
-	p.SetFormat("mimo", "anthropic")
-	// kimi has no SetFormat → translate path
 	ts := httptest.NewServer(buildServer(gormDB, p).Engine())
 	defer ts.Close()
 
@@ -369,11 +362,11 @@ func TestE2E_Anthropic_PassthroughVsTranslate_PathDiffers(t *testing.T) {
 		}
 	}
 
-	if atomic.LoadInt32(&passthroughCalled) == 0 {
-		t.Error("passthrough upstream was never called")
+	if atomic.LoadInt32(&up1Called) == 0 {
+		t.Error("up1 was never called")
 	}
-	if atomic.LoadInt32(&translateCalled) == 0 {
-		t.Error("translate upstream was never called")
+	if atomic.LoadInt32(&up2Called) == 0 {
+		t.Error("up2 was never called")
 	}
 }
 
@@ -643,13 +636,7 @@ func TestE2E_Admin_NoKey_Returns401(t *testing.T) {
 // ---- Streaming --------------------------------------------------------------
 
 func TestE2E_Anthropic_Stream(t *testing.T) {
-	frames := []string{
-		`{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}`,
-		`{"choices":[{"delta":{"content":" E2E"},"finish_reason":null}]}`,
-		`{"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}`,
-		`[DONE]`,
-	}
-	upstream := fakeOpenAIStreamingUpstream(frames)
+	upstream := fakeAnthropicSSEUpstream()
 	defer upstream.Close()
 
 	gormDB := setupTestDB(t)
@@ -714,17 +701,22 @@ func TestE2E_HopByHop_NotForwarded(t *testing.T) {
 	}
 }
 
-// ---- ModelOverride wires through -------------------------------------------
+// ---- Passthrough body integrity --------------------------------------------
 
-func TestE2E_ModelOverride_SentToUpstream(t *testing.T) {
-	var capturedModel string
+func TestE2E_Anthropic_BodyForwardedVerbatim(t *testing.T) {
+	var capturedBody []byte
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
-		capturedModel, _ = body["model"].(string)
+		capturedBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write(openAIResponseBody("ok", "stop", 5, 3))
+		body := map[string]interface{}{
+			"id": "msg_vb", "type": "message", "role": "assistant",
+			"model":       "claude-opus-4-5",
+			"content":     []map[string]interface{}{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]interface{}{"input_tokens": 5, "output_tokens": 3},
+		}
+		json.NewEncoder(w).Encode(body)
 	}))
 	defer upstream.Close()
 
@@ -732,18 +724,18 @@ func TestE2E_ModelOverride_SentToUpstream(t *testing.T) {
 	seedAccessKey(t, gormDB, "e2e-token", true)
 	seedUpstream(t, gormDB, "up1", upstream.URL)
 	p := buildPool(t, gormDB, 10*time.Millisecond)
-	p.SetModelOverride("up1", "qwen-max")
 	ts := httptest.NewServer(buildServer(gormDB, p).Engine())
 	defer ts.Close()
 
-	resp := post(t, ts.URL, "/v1/messages", "e2e-token", anthropicReqBody(false))
+	originalBody := anthropicReqBody(false)
+	resp := post(t, ts.URL, "/v1/messages", "e2e-token", originalBody)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
-	if capturedModel != "qwen-max" {
-		t.Errorf("expected upstream to receive model=qwen-max, got %q", capturedModel)
+	if !bytes.Equal(capturedBody, originalBody) {
+		t.Errorf("body not forwarded verbatim\n  sent: %s\n   got: %s", originalBody, capturedBody)
 	}
 }
