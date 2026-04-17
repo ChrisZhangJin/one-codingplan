@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Info } from 'lucide-react'
+import { Info, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiFetch } from '@/lib/api'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table'
 import CreateKeyDialog from './CreateKeyDialog'
 import BlockKeyDialog from './BlockKeyDialog'
+import EditKeyDialog from './EditKeyDialog'
 
 interface KeyResponse {
   id: string
@@ -38,6 +39,7 @@ export default function KeyTable() {
   const [loading, setLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [blockTarget, setBlockTarget] = useState<{ id: string; name: string } | null>(null)
+  const [editTarget, setEditTarget] = useState<KeyResponse | null>(null)
 
   const refetchKeys = useCallback(async () => {
     setLoading(true)
@@ -123,6 +125,14 @@ export default function KeyTable() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Edit key"
+                      onClick={() => setEditTarget(key)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     {key.enabled ? (
                       <Button
                         variant="outline"
@@ -168,6 +178,12 @@ export default function KeyTable() {
         open={!!blockTarget}
         onOpenChange={(open) => { if (!open) setBlockTarget(null) }}
         onBlocked={refetchKeys}
+      />
+      <EditKeyDialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+        onUpdated={refetchKeys}
+        keyData={editTarget}
       />
     </div>
   )
