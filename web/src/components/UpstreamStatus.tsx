@@ -8,12 +8,14 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import AddUpstreamDialog from './AddUpstreamDialog'
 import EditUpstreamDialog, { type UpstreamInfo } from './EditUpstreamDialog'
 
 export default function UpstreamStatus() {
   const [upstreams, setUpstreams] = useState<UpstreamInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [editTarget, setEditTarget] = useState<UpstreamInfo | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
 
   const fetchUpstreams = useCallback(async () => {
     setLoading(true)
@@ -67,14 +69,17 @@ export default function UpstreamStatus() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Upstream Status</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Refresh upstream status"
-          onClick={fetchUpstreams}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>Add Upstream</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Refresh upstream status"
+            onClick={fetchUpstreams}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -132,6 +137,7 @@ export default function UpstreamStatus() {
         onUpdated={fetchUpstreams}
         upstream={editTarget}
       />
+      <AddUpstreamDialog open={addOpen} onOpenChange={setAddOpen} onCreated={fetchUpstreams} />
     </div>
   )
 }
