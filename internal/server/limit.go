@@ -27,6 +27,15 @@ func ResetPerMinuteCounters() {
 	})
 }
 
+// ResetPerDayCounters clears all per-day rate limit counters.
+// Exported for use in tests to avoid inter-test interference.
+func ResetPerDayCounters() {
+	perDayCounters.Range(func(k, _ any) bool {
+		perDayCounters.Delete(k)
+		return true
+	})
+}
+
 func checkRate(counters *sync.Map, keyID string, limit int, currentWindow int) bool {
 	val, _ := counters.LoadOrStore(keyID, &rateCounter{})
 	rc := val.(*rateCounter)

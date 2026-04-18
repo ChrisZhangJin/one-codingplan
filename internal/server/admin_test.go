@@ -536,7 +536,7 @@ func TestListUpstreams(t *testing.T) {
 
 // --- Limit middleware tests ---
 
-func makeLimitTestKey(db *gorm.DB, id, token string, budget int64, rpm int) {
+func makeLimitTestKey(db *gorm.DB, id, token string, budget int64, rpm, rpd int) {
 	key := models.AccessKey{
 		ID:                 id,
 		Token:              token,
@@ -544,6 +544,7 @@ func makeLimitTestKey(db *gorm.DB, id, token string, budget int64, rpm int) {
 		Name:               id,
 		TokenBudget:        budget,
 		RateLimitPerMinute: rpm,
+		RateLimitPerDay:    rpd,
 	}
 	db.Create(&key)
 }
@@ -552,7 +553,7 @@ func TestLimitMiddleware_TokenBudget(t *testing.T) {
 	srv, db := setupAdminTest(t)
 	engine := srv.Engine()
 
-	makeLimitTestKey(db, "budget-k1", "ocp-budget-token-1", 100, 0)
+	makeLimitTestKey(db, "budget-k1", "ocp-budget-token-1", 100, 0, 0)
 	// Seed usage at exactly the budget
 	db.Create(&models.UsageRecord{KeyID: "budget-k1", UpstreamID: 0, InputTokens: 60, OutputTokens: 40, Success: true})
 
@@ -586,7 +587,7 @@ func TestLimitMiddleware_TokenBudget_UnderLimit(t *testing.T) {
 	srv, db := setupAdminTest(t)
 	engine := srv.Engine()
 
-	makeLimitTestKey(db, "budget-k2", "ocp-budget-token-2", 100, 0)
+	makeLimitTestKey(db, "budget-k2", "ocp-budget-token-2", 100, 0, 0)
 	// Seed usage under budget
 	db.Create(&models.UsageRecord{KeyID: "budget-k2", UpstreamID: 0, InputTokens: 30, OutputTokens: 20, Success: true})
 
@@ -606,7 +607,7 @@ func TestLimitMiddleware_NoBudget(t *testing.T) {
 	srv, db := setupAdminTest(t)
 	engine := srv.Engine()
 
-	makeLimitTestKey(db, "budget-k3", "ocp-budget-token-3", 0, 0)
+	makeLimitTestKey(db, "budget-k3", "ocp-budget-token-3", 0, 0, 0)
 	// Seed large usage — should not trigger any limit since budget=0 means unlimited
 	db.Create(&models.UsageRecord{KeyID: "budget-k3", UpstreamID: 0, InputTokens: 999999, OutputTokens: 999999, Success: true})
 
@@ -625,7 +626,7 @@ func TestLimitMiddleware_RatePerMinute(t *testing.T) {
 	srv, db := setupAdminTest(t)
 	engine := srv.Engine()
 
-	makeLimitTestKey(db, "rate-k1", "ocp-rate-token-1", 0, 2)
+	makeLimitTestKey(db, "rate-k1", "ocp-rate-token-1", 0, 2, 0)
 
 	server.ResetPerMinuteCounters()
 
@@ -668,6 +669,49 @@ func TestLimitMiddleware_RatePerMinute(t *testing.T) {
 	}
 	if errObj["message"] != "per-minute rate limit exceeded" {
 		t.Errorf("expected message='per-minute rate limit exceeded', got %v", errObj["message"])
+	}
+}
+
+func TestLimitMiddleware_RatePerDay(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	makeLimitTestKey(db, "rate-k2", "ocp-rate-token-2", 0, 0, 2)
+
+	server.ResetPerDayCounters()
+
+	doReq := func() (int, map[string]interface{}) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+		req.Header.Set("Authorization", "Bearer ocp-rate-token-2")
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		var m map[string]interface{}
+		json.NewDecoder(w.Body).Decode(&m)
+		return w.Code, m
+	}
+
+	// First two requests should pass the rate limit check
+	for i := 1; i <= 2; i++ {
+		code, _ := doReq()
+		if code == http.StatusTooManyRequests {
+			t.Errorf("request %d should pass rate limit, got 429", i)
+		}
+	}
+	// Third request should be rate limited
+	code, m := doReq()
+	if code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 on third request (limit=2), got %d", code)
+	}
+	errObj, ok := m["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected nested error object, got %v", m["error"])
+	}
+	if errObj["code"] != "rate_limit_exceeded" {
+		t.Errorf("expected code=rate_limit_exceeded, got %v", errObj["code"])
+	}
+	if errObj["message"] != "per-day rate limit exceeded" {
+		t.Errorf("expected message='per-day rate limit exceeded', got %v", errObj["message"])
 	}
 }
 

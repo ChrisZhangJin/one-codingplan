@@ -528,7 +528,7 @@ func TestE2E_Admin_CreateAndListKey(t *testing.T) {
 	createBody, _ := json.Marshal(map[string]interface{}{
 		"name":               "test-key",
 		"token_budget":       500000,
-		"rate_limit_per_min": 60,
+		"rate_limit_per_minute": 60,
 	})
 	resp := post(t, ts.URL, "/api/keys", "admin-key", createBody)
 	defer resp.Body.Close()
