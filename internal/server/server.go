@@ -42,6 +42,7 @@ func (s *Server) Engine() *gin.Engine {
 	v1.Use(s.limitMiddleware)
 	v1.POST("/chat/completions", s.handleRelay)
 	v1.POST("/messages", s.handleAnthropicRelay)
+	v1.POST("/responses", s.handleResponsesRelay)
 
 	api := r.Group("/api")
 	api.Use(s.adminMiddleware)
