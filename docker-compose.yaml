@@ -20,6 +20,8 @@ services:
     container_name: ocp-cli
     profiles:
       - cli
+    depends_on:
+      - ocp
     environment:
       OCP_HOST: ${OCP_HOST:-http://ocp:8080}
       OCP_ADMIN_KEY: ${OCP_ADMIN_KEY}

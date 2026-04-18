@@ -3,17 +3,17 @@ server:
   admin_key: "change-me"
 
 database:
-  path: "./ocp.db"
+  path: "/data/ocp.db"
 
 pool:
   rate_limit_backoff: "5s"
 
-upstreams:
-  - name: kimi
-    base_url: https://api.moonshot.ai
-    api_key: "sk-your-kimi-key"
-    enabled: true
-  - name: qwen
-    base_url: https://dashscope.aliyuncs.com
-    api_key: "sk-your-qwen-key"
-    enabled: true
+logging:
+  level: "info"
+
+# Add upstreams below. Example:
+# upstreams:
+#   - name: kimi
+#     base_url: https://api.moonshot.ai
+#     api_key: "sk-your-kimi-key"
+#     enabled: true
