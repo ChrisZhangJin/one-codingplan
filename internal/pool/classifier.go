@@ -78,8 +78,11 @@ func Classify(provider string, status int, body []byte) ErrorClass {
 		}
 	}
 
-	if status == 402 {
+	if status == 402 || status == 403 {
 		return ClassCreditsExhausted
+	}
+	if status == 404 {
+		return ClassModelNotSupported
 	}
 	if status == 429 {
 		return ClassRateLimited
