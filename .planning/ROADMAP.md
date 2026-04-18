@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 1–8 (shipped 2026-04-17)
-- 🔄 **v1.1 Ops** — Phases 9–11 (active)
+- ✅ **v1.1 Ops** — Phases 9–11 (complete 2026-04-18)
+- 🔄 **v1.2 Codex + Portal UX** — Phases 12–13 (active)
 
 ## Phases
 
@@ -23,11 +24,19 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
 
 </details>
 
-### v1.1 Ops (Phases 9–11)
+<details>
+<summary>✅ v1.1 Ops (Phases 9–11) — COMPLETE 2026-04-18</summary>
 
-- [ ] **Phase 9: Rate Limit Backend** - Per-minute and per-day request caps enforced via admin API and middleware
-- [x] **Phase 10: Rate Limit Portal** - Rate limit fields visible and editable in web portal per key (completed 2026-04-18)
-- [x] **Phase 11: Docker Deployment** - Service builds, runs, and persists via Dockerfile + docker-compose (completed 2026-04-18)
+- [x] Phase 9: Rate Limit Backend — Per-minute and per-day request caps enforced via admin API and middleware
+- [x] Phase 10: Rate Limit Portal — Rate limit fields visible and editable in web portal per key
+- [x] Phase 11: Docker Deployment — Service builds, runs, and persists via Dockerfile + docker-compose
+
+</details>
+
+### v1.2 Codex + Portal UX (Phases 12–13)
+
+- [ ] **Phase 12: Responses API** - Codex CLI connects to ocp via `/v1/responses` with full translation, streaming, and middleware
+- [ ] **Phase 13: Portal UX** - Operators can add upstreams and view per-key usage statistics from the web portal
 
 ## Phase Details
 
@@ -69,21 +78,47 @@ Plans:
 Plans:
 - [x] 11-01-PLAN.md — Fix Dockerfile, compose, and config for working Docker deployment
 
+### Phase 12: Responses API
+**Goal**: Codex CLI can send requests to ocp's `/v1/responses` endpoint and receive correctly translated responses, with full streaming, auth, failover, and rate-limit enforcement
+**Depends on**: Nothing (builds on existing relay pipeline and middleware; no v1.2 prerequisite)
+**Requirements**: RESP-01, RESP-02, RESP-03, RESP-04, RESP-05
+**Success Criteria** (what must be TRUE):
+  1. Codex CLI can target ocp (`OPENAI_BASE_URL=http://ocp`) and complete a coding request without configuration changes on the Codex side
+  2. A non-streaming request to `/v1/responses` returns a response in Responses API format (not chat completions format)
+  3. A streaming request to `/v1/responses` delivers incremental output events in Responses API SSE format end-to-end
+  4. A request to `/v1/responses` with an invalid or missing access key receives a 401 response
+  5. A request to `/v1/responses` that triggers upstream failover succeeds transparently (Codex sees no error)
+**Plans**: TBD
+
+### Phase 13: Portal UX
+**Goal**: Operators can add new upstreams directly from the web portal and view per-key usage statistics without touching config.yaml or the admin API
+**Depends on**: Phase 12 (no hard dependency; can run in parallel, but sequential keeps scope clean)
+**Requirements**: UPST-01, UPST-02, UPST-03, STAT-01, STAT-02, STAT-03
+**Success Criteria** (what must be TRUE):
+  1. Operator fills in the add-upstream form (name, base URL, API key, model override) and submits; the new upstream appears in the upstream list immediately without a page reload
+  2. The newly added upstream is immediately included in the round-robin pool and receives requests
+  3. A "Usage" link is present in the portal navigation and opens the usage statistics page
+  4. The usage page displays a table with one row per access key showing total requests, total input tokens, and total output tokens
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Skeleton & Data Layer | v1.0 | 2/2 | ✅ Complete | 2026-04-16 |
-| 2. Upstream Pool & Health | v1.0 | 2/2 | ✅ Complete | 2026-04-16 |
-| 3. Relay Pipeline (OpenAI) | v1.0 | 2/2 | ✅ Complete | 2026-04-16 |
-| 4. Anthropic Translation | v1.0 | 3/3 | ✅ Complete | 2026-04-16 |
-| 5. Management API | v1.0 | 2/2 | ✅ Complete | 2026-04-16 |
-| 6. Web Portal | v1.0 | 3/3 | ✅ Complete | 2026-04-17 |
-| 7. CLI | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
-| 8. Upstream Format Flexibility | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
-| 9. Rate Limit Backend | v1.1 | 0/1 | In progress | - |
-| 10. Rate Limit Portal | v1.1 | 1/1 | Complete    | 2026-04-18 |
-| 11. Docker Deployment | v1.1 | 2/2 | Complete    | 2026-04-18 |
+| 1. Skeleton & Data Layer | v1.0 | 2/2 | Complete | 2026-04-16 |
+| 2. Upstream Pool & Health | v1.0 | 2/2 | Complete | 2026-04-16 |
+| 3. Relay Pipeline (OpenAI) | v1.0 | 2/2 | Complete | 2026-04-16 |
+| 4. Anthropic Translation | v1.0 | 3/3 | Complete | 2026-04-16 |
+| 5. Management API | v1.0 | 2/2 | Complete | 2026-04-16 |
+| 6. Web Portal | v1.0 | 3/3 | Complete | 2026-04-17 |
+| 7. CLI | v1.0 | 2/2 | Complete | 2026-04-17 |
+| 8. Upstream Format Flexibility | v1.0 | 2/2 | Complete | 2026-04-17 |
+| 9. Rate Limit Backend | v1.1 | 1/1 | Complete | 2026-04-18 |
+| 10. Rate Limit Portal | v1.1 | 1/1 | Complete | 2026-04-18 |
+| 11. Docker Deployment | v1.1 | 2/2 | Complete | 2026-04-18 |
+| 12. Responses API | v1.2 | 0/? | Not started | - |
+| 13. Portal UX | v1.2 | 0/? | Not started | - |
 
 ---
-*Roadmap created: 2026-04-16 · v1.0 archived: 2026-04-17 · v1.1 phases added: 2026-04-18*
+*Roadmap created: 2026-04-16 · v1.0 archived: 2026-04-17 · v1.1 phases added: 2026-04-18 · v1.2 phases added: 2026-04-18*

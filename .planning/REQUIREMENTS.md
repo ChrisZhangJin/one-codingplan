@@ -52,16 +52,16 @@ Add Codex CLI support via OpenAI Responses API translation, and fill two portal 
 
 ## Traceability
 
-| REQ-ID  | Description                                    | Phase    | Status  |
-|---------|------------------------------------------------|----------|---------|
-| RESP-01 | Codex connects to /v1/responses                | Phase 12 | Pending |
-| RESP-02 | Translate /v1/responses → /v1/chat/completions | Phase 12 | Pending |
+| REQ-ID  | Description                                     | Phase    | Status  |
+|---------|-------------------------------------------------|----------|---------|
+| RESP-01 | Codex connects to /v1/responses                 | Phase 12 | Pending |
+| RESP-02 | Translate /v1/responses → /v1/chat/completions  | Phase 12 | Pending |
 | RESP-03 | Translate response back to Responses API format | Phase 12 | Pending |
-| RESP-04 | Streaming via /v1/responses                    | Phase 12 | Pending |
-| RESP-05 | Auth + failover + rate-limit on /v1/responses  | Phase 12 | Pending |
-| UPST-01 | Create upstream via portal                     | Phase 13 | Pending |
-| UPST-02 | Add form: name, URL, key, model override       | Phase 13 | Pending |
-| UPST-03 | New upstream immediately active in pool        | Phase 13 | Pending |
-| STAT-01 | Usage page in portal nav                       | Phase 13 | Pending |
-| STAT-02 | Per-key totals: requests + tokens              | Phase 13 | Pending |
-| STAT-03 | Backend usage aggregation API                  | Phase 13 | Pending |
+| RESP-04 | Streaming via /v1/responses                     | Phase 12 | Pending |
+| RESP-05 | Auth + failover + rate-limit on /v1/responses   | Phase 12 | Pending |
+| UPST-01 | Create upstream via portal                      | Phase 13 | Pending |
+| UPST-02 | Add form: name, URL, key, model override        | Phase 13 | Pending |
+| UPST-03 | New upstream immediately active in pool         | Phase 13 | Pending |
+| STAT-01 | Usage page in portal nav                        | Phase 13 | Pending |
+| STAT-02 | Per-key totals: requests + tokens               | Phase 13 | Pending |
+| STAT-03 | Backend usage aggregation API                   | Phase 13 | Pending |
