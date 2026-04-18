@@ -25,6 +25,14 @@ All 8 v1.0 phases complete. The proxy is operational with:
 - Web portal at `/` (upstream health, key management)
 - CLI (`ocp status`, `ocp next`, `ocp keys`)
 
+## Current Milestone: v1.1 Ops
+
+**Goal:** Add per-key rate limiting and production-ready Docker deployment.
+
+**Target features:**
+- Per-key rate limits: per-minute and per-day request caps enforced on access keys, configurable via admin API and portal
+- Docker deployment: service builds and runs cleanly in container via Dockerfile + docker-compose
+
 ## Requirements
 
 ### Validated (v1.0)
@@ -45,12 +53,18 @@ All 8 v1.0 phases complete. The proxy is operational with:
 - ✓ Per-upstream `format` flag — direct Anthropic passthrough for native Anthropic upstreams — v1.0
 - ✓ Model/config error classification — `ClassModelNotSupported` permanently disables misconfigured upstream — v1.0
 
-### Active (v1.1 candidates)
+### Active (v1.1)
+
+- [ ] Per-minute and per-day request limits enforced on access keys
+- [ ] Rate limit status visible per key in web portal
+- [ ] Service builds and runs in Docker container via Dockerfile + docker-compose
+- [ ] CLI controller runs on-demand via docker compose run
+
+### Deferred (v1.2+)
 
 - [ ] Proactive upstream health polling — poll Kimi `/v1/users/me/balance` every 5 min; mark unhealthy when balance is zero
 - [ ] Web portal upstream dashboard: real-time health, credits remaining, request counts per provider
 - [ ] Usage charts in portal (requests/tokens over time, per-upstream breakdown)
-- [ ] Per-minute and per-day rate limits on access keys (KEY-07)
 - [ ] Prometheus-compatible `/metrics` endpoint
 
 ### Out of Scope

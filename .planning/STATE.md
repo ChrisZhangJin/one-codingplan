@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: TBD
-status: planning
-last_updated: "2026-04-17T12:00:00.000Z"
+milestone_name: Ops
+status: active
+last_updated: "2026-04-18T06:00:00.000Z"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-04-17 after v1.0)
 
 ## Current Phase
 
-None — v1.0 complete. Run `/gsd-new-milestone` to define v1.1.
+None — defining requirements for v1.1 Ops. Last activity: 2026-04-18 — Milestone v1.1 started.
 
 ---
 
