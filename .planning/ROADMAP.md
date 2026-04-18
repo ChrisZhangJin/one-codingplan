@@ -42,7 +42,7 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
   4. Per-minute and per-day limits independently enforce: exhausting one does not affect the other's counter
 **Plans:** 1 plan
 Plans:
-- [ ] 09-01-PLAN.md — Update 429 format to OpenAI-compatible, add per-day test, fix e2e field name
+- [x] 09-01-PLAN.md — Update 429 format to OpenAI-compatible, add per-day test, fix e2e field name
 
 ### Phase 10: Rate Limit Portal
 **Goal**: Operators can see and update rate limit configuration for any key directly from the web portal
