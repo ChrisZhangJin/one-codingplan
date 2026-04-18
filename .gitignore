@@ -7,3 +7,4 @@ web/node_modules/
 web/dist/
 internal/server/web_dist/*
 !internal/server/web_dist/.gitkeep
+.planning
