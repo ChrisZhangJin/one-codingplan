@@ -88,7 +88,10 @@ Plans:
   3. A streaming request to `/v1/responses` delivers incremental output events in Responses API SSE format end-to-end
   4. A request to `/v1/responses` with an invalid or missing access key receives a 401 response
   5. A request to `/v1/responses` that triggers upstream failover succeeds transparently (Codex sees no error)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 12-01-PLAN.md — Responses API types and bidirectional translation functions (request + response)
+- [ ] 12-02-PLAN.md — Stream translator, handler, route registration, and e2e tests
 
 ### Phase 13: Portal UX
 **Goal**: Operators can add new upstreams directly from the web portal and view per-key usage statistics without touching config.yaml or the admin API
@@ -117,7 +120,7 @@ Plans:
 | 9. Rate Limit Backend | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. Rate Limit Portal | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 11. Docker Deployment | v1.1 | 2/2 | Complete | 2026-04-18 |
-| 12. Responses API | v1.2 | 0/? | Not started | - |
+| 12. Responses API | v1.2 | 0/2 | Not started | - |
 | 13. Portal UX | v1.2 | 0/? | Not started | - |
 
 ---
