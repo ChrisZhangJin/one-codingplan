@@ -1,5 +1,5 @@
 # Stage 1: Build the web portal
-FROM node:22-alpine AS web-builder
+FROM node:24-slim AS web-builder
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
 RUN npm install --registry https://registry.npmmirror.com
@@ -17,7 +17,7 @@ COPY --from=web-builder /app/web/dist ./internal/server/web_dist
 RUN go build -trimpath -ldflags="-s -w" -o ocp ./cmd/ocp
 
 # Stage 3: Runtime image
-FROM alpine:3.21
+FROM alpine:3.23.2
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-builder /app/ocp /usr/local/bin/ocp
