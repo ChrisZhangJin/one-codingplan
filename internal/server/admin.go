@@ -454,6 +454,35 @@ func (s *Server) handleRotateUpstream(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"upstream": name, "message": "rotated to " + name})
 }
 
+type usageStatsRow struct {
+	KeyName           string `json:"key_name"`
+	TotalRequests     int64  `json:"total_requests"`
+	TotalInputTokens  int64  `json:"total_input_tokens"`
+	TotalOutputTokens int64  `json:"total_output_tokens"`
+}
+
+func (s *Server) handleUsageStats(c *gin.Context) {
+	var rows []usageStatsRow
+	err := s.db.Raw(`
+		SELECT ak.name AS key_name,
+		       COUNT(ur.id) AS total_requests,
+		       COALESCE(SUM(ur.input_tokens), 0) AS total_input_tokens,
+		       COALESCE(SUM(ur.output_tokens), 0) AS total_output_tokens
+		FROM access_keys ak
+		LEFT JOIN usage_records ur ON ur.key_id = ak.id
+		GROUP BY ak.id, ak.name
+		ORDER BY ak.name
+	`).Scan(&rows).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query usage"})
+		return
+	}
+	if rows == nil {
+		rows = []usageStatsRow{}
+	}
+	c.JSON(http.StatusOK, rows)
+}
+
 func (s *Server) handleListUpstreams(c *gin.Context) {
 	list := s.pool.List()
 
