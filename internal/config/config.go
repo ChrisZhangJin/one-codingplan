@@ -12,6 +12,16 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Pool     PoolConfig     `mapstructure:"pool"`
+	Logging  LoggingConfig  `mapstructure:"logging"`
+}
+
+type LoggingConfig struct {
+	Level      string `mapstructure:"level"`        // debug, info, warn, error (default: info)
+	File       string `mapstructure:"file"`          // path to log file; empty = stdout only
+	MaxSizeMB  int    `mapstructure:"max_size_mb"`   // MB before rotation (default: 100)
+	MaxBackups int    `mapstructure:"max_backups"`   // rotated files to keep (default: 3)
+	MaxAgeDays int    `mapstructure:"max_age_days"`  // days to retain rotated files (default: 28)
+	Compress   bool   `mapstructure:"compress"`      // gzip rotated files
 }
 
 type PoolConfig struct {

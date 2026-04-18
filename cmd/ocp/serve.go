@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"one-codingplan/internal/config"
 	"one-codingplan/internal/database"
+	"one-codingplan/internal/logging"
 	"one-codingplan/internal/pool"
 	"one-codingplan/internal/server"
 )
@@ -38,6 +39,8 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("migrate: %w", err)
 		}
 
+		logging.Setup(cfg.Logging)
+
 		poolCfg := &pool.Config{
 			RateLimitBackoff: cfg.PoolBackoff(),
 		}
@@ -52,7 +55,7 @@ var serveCmd = &cobra.Command{
 		r := srv.Engine()
 
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
-		log.Printf("ocp starting on %s", addr)
+		slog.Info("ocp starting", "addr", addr)
 		return r.Run(addr)
 	},
 }

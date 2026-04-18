@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -95,10 +95,13 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		outReq.Header.Set("x-api-key", up.APIKey)
 		outReq.Header.Set("Content-Type", "application/json")
 		outReq.Header.Del("Host")
+		slog.Debug("upstream request", "name", up.Name, "url", outReq.URL.String(),
+			"model_override", up.ModelOverride, "key_prefix", up.APIKey[:min(8, len(up.APIKey))],
+			"body", string(sendBody))
 		resp, reqErr := relayClient.Do(outReq)
 		if reqErr != nil {
 			cancel()
-			log.Printf("[upstream] %s network error: %v", up.Name, reqErr)
+			slog.Warn("upstream network error", "name", up.Name, "err", reqErr)
 			continue
 		}
 
@@ -106,7 +109,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			resp.Body.Close()
 			cancel()
-			log.Printf("[upstream] %s status %d url=%s: %s", up.Name, resp.StatusCode, outReq.URL.String(), respBody)
+			slog.Warn("upstream error response", "name", up.Name, "status", resp.StatusCode, "url", outReq.URL.String(), "body", string(respBody))
 			class := pool.Classify(up.Name, resp.StatusCode, respBody)
 			switch class {
 			case pool.ClassCreditsExhausted:
@@ -125,7 +128,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 
 		// Success path — passthrough
-		log.Printf("[upstream] %s anthropic stream=%v url=%s", up.Name, req.Stream, up.BaseURL)
+		slog.Info("upstream ok", "name", up.Name, "stream", req.Stream, "url", outReq.URL.String())
 		if req.Stream {
 			s.proxyStream(c, resp, cancel, keyID, up.ID, start)
 		} else {

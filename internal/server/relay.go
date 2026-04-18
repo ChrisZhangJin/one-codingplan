@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -210,7 +210,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 
 		// Success path — cancel is deferred into the proxy functions so the
 		// context remains live for the duration of body reads (streaming or buffered).
-		log.Printf("[upstream] %s openai stream=%v url=%s", current.Name, rb.Stream, current.BaseURL)
+		slog.Info("upstream ok", "name", current.Name, "stream", rb.Stream, "url", outReq.URL.String())
 		if rb.Stream {
 			s.proxyStream(c, resp, cancel, keyID, current.ID, start)
 		} else {
