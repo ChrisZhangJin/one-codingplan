@@ -263,16 +263,19 @@ func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context
 	s.logUsage(keyID, upstreamID, true, inTokens, outTokens, time.Since(start))
 }
 
-// logUsage writes a UsageRecord to the database asynchronously (D-14).
+// logUsage enqueues a UsageRecord for serial write by the usageWriter goroutine.
 func (s *Server) logUsage(keyID string, upstreamID uint, success bool, in, out int, latency time.Duration) {
-	go s.db.Create(&models.UsageRecord{
+	select {
+	case s.usageCh <- models.UsageRecord{
 		KeyID:        keyID,
 		UpstreamID:   upstreamID,
 		InputTokens:  in,
 		OutputTokens: out,
 		LatencyMs:    latency.Milliseconds(),
 		Success:      success,
-	})
+	}:
+	default: // drop if channel full (backpressure)
+	}
 }
 
 // proxyStream copies an SSE upstream response to the client with per-chunk flushing,

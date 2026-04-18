@@ -7,18 +7,29 @@ import (
 	"gorm.io/gorm"
 
 	"one-codingplan/internal/config"
+	"one-codingplan/internal/models"
 	"one-codingplan/internal/pool"
 )
 
 type Server struct {
-	db     *gorm.DB
-	cfg    *config.Config
-	pool   *pool.Pool
-	encKey []byte
+	db      *gorm.DB
+	cfg     *config.Config
+	pool    *pool.Pool
+	encKey  []byte
+	usageCh chan models.UsageRecord
 }
 
 func New(db *gorm.DB, cfg *config.Config, p *pool.Pool, encKey []byte) *Server {
-	return &Server{db: db, cfg: cfg, pool: p, encKey: encKey}
+	s := &Server{db: db, cfg: cfg, pool: p, encKey: encKey, usageCh: make(chan models.UsageRecord, 512)}
+	go s.usageWriter()
+	return s
+}
+
+// usageWriter drains usageCh and writes records serially, eliminating SQLite write lock contention.
+func (s *Server) usageWriter() {
+	for rec := range s.usageCh {
+		s.db.Create(&rec) //nolint:errcheck
+	}
 }
 
 func (s *Server) Engine() *gin.Engine {
