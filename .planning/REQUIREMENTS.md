@@ -46,15 +46,15 @@ Add per-key rate limiting and production-ready Docker deployment.
 
 ## Traceability
 
-| REQ-ID  | Description                        | Phase | Status  |
-|---------|------------------------------------|-------|---------|
-| RATE-01 | Admin sets per-minute limit        | TBD   | Pending |
-| RATE-02 | Admin sets per-day limit           | TBD   | Pending |
-| RATE-03 | 429 on per-minute exceeded         | TBD   | Pending |
-| RATE-04 | 429 on per-day exceeded            | TBD   | Pending |
-| RATE-05 | Rate limit visible in portal       | TBD   | Pending |
-| RATE-06 | Edit rate limits via portal        | TBD   | Pending |
-| DOCK-01 | docker build succeeds              | TBD   | Pending |
-| DOCK-02 | docker compose up serves requests  | TBD   | Pending |
-| DOCK-03 | DB persists via volume             | TBD   | Pending |
-| DOCK-04 | ocp-cli runs via compose run       | TBD   | Pending |
+| REQ-ID  | Description                        | Phase    | Status  |
+|---------|------------------------------------|----------|---------|
+| RATE-01 | Admin sets per-minute limit        | Phase 9  | Pending |
+| RATE-02 | Admin sets per-day limit           | Phase 9  | Pending |
+| RATE-03 | 429 on per-minute exceeded         | Phase 9  | Pending |
+| RATE-04 | 429 on per-day exceeded            | Phase 9  | Pending |
+| RATE-05 | Rate limit visible in portal       | Phase 10 | Pending |
+| RATE-06 | Edit rate limits via portal        | Phase 10 | Pending |
+| DOCK-01 | docker build succeeds              | Phase 11 | Pending |
+| DOCK-02 | docker compose up serves requests  | Phase 11 | Pending |
+| DOCK-03 | DB persists via volume             | Phase 11 | Pending |
+| DOCK-04 | ocp-cli runs via compose run       | Phase 11 | Pending |
