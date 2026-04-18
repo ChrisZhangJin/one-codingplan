@@ -52,6 +52,34 @@ func checkRate(counters *sync.Map, keyID string, limit int, currentWindow int) b
 	return true
 }
 
+func currentDayCount(keyID string) int {
+	val, ok := perDayCounters.Load(keyID)
+	if !ok {
+		return 0
+	}
+	rc := val.(*rateCounter)
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if rc.windowID != time.Now().UTC().YearDay() {
+		return 0
+	}
+	return rc.count
+}
+
+// InjectDayCount sets a perDayCounters entry for the given keyID with today's windowID
+// and the given count. Only for use in tests.
+func InjectDayCount(keyID string, count int) {
+	rc := &rateCounter{count: count, windowID: time.Now().UTC().YearDay()}
+	perDayCounters.Store(keyID, rc)
+}
+
+// InjectDayCountStale sets a perDayCounters entry for the given keyID with a windowID
+// from yesterday. Only for use in tests.
+func InjectDayCountStale(keyID string) {
+	rc := &rateCounter{count: 99, windowID: time.Now().UTC().YearDay() - 1}
+	perDayCounters.Store(keyID, rc)
+}
+
 func (s *Server) limitMiddleware(c *gin.Context) {
 	key := c.MustGet("accessKey").(models.AccessKey)
 

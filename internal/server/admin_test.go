@@ -715,5 +715,107 @@ func TestLimitMiddleware_RatePerDay(t *testing.T) {
 	}
 }
 
+func TestListKeys_IncludesDayUsage(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	key := models.AccessKey{ID: "day-k1", Token: "ocp-day-token-1", Enabled: true, Name: "day-key-1"}
+	db.Create(&key)
+	server.ResetPerDayCounters()
+
+	req := adminReq(t, http.MethodGet, "/api/keys", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp []map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var k map[string]interface{}
+	for _, item := range resp {
+		if item["id"] == "day-k1" {
+			k = item
+			break
+		}
+	}
+	if k == nil {
+		t.Fatal("key day-k1 not found in response")
+	}
+	if k["day_usage"] != float64(0) {
+		t.Errorf("expected day_usage=0, got %v", k["day_usage"])
+	}
+}
+
+func TestListKeys_DayUsage_ActiveCounter(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	key := models.AccessKey{ID: "day-k2", Token: "ocp-day-token-2", Enabled: true, Name: "day-key-2"}
+	db.Create(&key)
+	server.InjectDayCount("day-k2", 42)
+
+	req := adminReq(t, http.MethodGet, "/api/keys", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp []map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var k map[string]interface{}
+	for _, item := range resp {
+		if item["id"] == "day-k2" {
+			k = item
+			break
+		}
+	}
+	if k == nil {
+		t.Fatal("key day-k2 not found in response")
+	}
+	if k["day_usage"] != float64(42) {
+		t.Errorf("expected day_usage=42, got %v", k["day_usage"])
+	}
+}
+
+func TestListKeys_DayUsage_StaleWindow(t *testing.T) {
+	srv, db := setupAdminTest(t)
+	engine := srv.Engine()
+
+	key := models.AccessKey{ID: "day-k3", Token: "ocp-day-token-3", Enabled: true, Name: "day-key-3"}
+	db.Create(&key)
+	server.InjectDayCountStale("day-k3")
+
+	req := adminReq(t, http.MethodGet, "/api/keys", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp []map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var k map[string]interface{}
+	for _, item := range resp {
+		if item["id"] == "day-k3" {
+			k = item
+			break
+		}
+	}
+	if k == nil {
+		t.Fatal("key day-k3 not found in response")
+	}
+	if k["day_usage"] != float64(0) {
+		t.Errorf("expected day_usage=0 for stale window, got %v", k["day_usage"])
+	}
+}
+
 // Ensure time import used
 var _ = time.Now

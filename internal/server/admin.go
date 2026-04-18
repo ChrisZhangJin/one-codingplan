@@ -53,6 +53,7 @@ type keyResponse struct {
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
 	RateLimitPerMinute int        `json:"rate_limit_per_minute"`
 	RateLimitPerDay    int        `json:"rate_limit_per_day"`
+	DayUsage           int        `json:"day_usage"`
 	UsageTotalInput    int64      `json:"usage_total_input"`
 	UsageTotalOutput   int64      `json:"usage_total_output"`
 	CreatedAt          time.Time  `json:"created_at"`
@@ -106,6 +107,7 @@ func (s *Server) toKeyResponse(key models.AccessKey, exposeToken bool) keyRespon
 		ExpiresAt:          key.ExpiresAt,
 		RateLimitPerMinute: key.RateLimitPerMinute,
 		RateLimitPerDay:    key.RateLimitPerDay,
+		DayUsage:           currentDayCount(key.ID),
 		UsageTotalInput:    input,
 		UsageTotalOutput:   output,
 		CreatedAt:          key.CreatedAt,
