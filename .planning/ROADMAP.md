@@ -26,7 +26,7 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
 ### v1.1 Ops (Phases 9–11)
 
 - [ ] **Phase 9: Rate Limit Backend** - Per-minute and per-day request caps enforced via admin API and middleware
-- [ ] **Phase 10: Rate Limit Portal** - Rate limit fields visible and editable in web portal per key
+- [x] **Phase 10: Rate Limit Portal** - Rate limit fields visible and editable in web portal per key (completed 2026-04-18)
 - [ ] **Phase 11: Docker Deployment** - Service builds, runs, and persists via Dockerfile + docker-compose
 
 ## Phase Details
@@ -52,9 +52,9 @@ Plans:
   1. Key management table displays per-minute limit, per-day limit, and current-day request count for each key
   2. Admin can open the edit dialog for an existing key and update per-minute or per-day limit; changes persist and take effect immediately
   3. A key with no rate limit set displays a clear "unlimited" indicator, not a zero or blank
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 10-01-PLAN.md — Add day_usage to backend keyResponse, add Rate/min, Rate/day, Today columns to KeyTable
+- [x] 10-01-PLAN.md — Add day_usage to backend keyResponse, add Rate/min, Rate/day, Today columns to KeyTable
 
 ### Phase 11: Docker Deployment
 **Goal**: Service runs cleanly in a container with persistent storage, and the CLI is accessible via compose
@@ -80,7 +80,7 @@ Plans:
 | 7. CLI | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
 | 8. Upstream Format Flexibility | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
 | 9. Rate Limit Backend | v1.1 | 0/1 | In progress | - |
-| 10. Rate Limit Portal | v1.1 | 0/1 | Not started | - |
+| 10. Rate Limit Portal | v1.1 | 1/1 | Complete    | 2026-04-18 |
 | 11. Docker Deployment | v1.1 | 0/? | Not started | - |
 
 ---
