@@ -1,0 +1,9 @@
+web/node_modules
+web/dist
+internal/server/web_dist
+*.log
+nohup.out
+data/
+ocp
+.planning/
+.claude/
