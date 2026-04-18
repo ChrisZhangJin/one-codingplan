@@ -54,7 +54,13 @@ func (s *Server) limitMiddleware(c *gin.Context) {
 			Where("key_id = ?", key.ID).
 			Row().Scan(&totalInput, &totalOutput)
 		if totalInput+totalOutput >= key.TokenBudget {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "token budget exceeded"})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": gin.H{
+					"message": "token budget exceeded",
+					"type":    "requests",
+					"code":    "rate_limit_exceeded",
+				},
+			})
 			return
 		}
 	}
@@ -64,7 +70,13 @@ func (s *Server) limitMiddleware(c *gin.Context) {
 		now := time.Now().UTC()
 		minuteWindow := now.Hour()*60 + now.Minute()
 		if !checkRate(&perMinuteCounters, key.ID, key.RateLimitPerMinute, minuteWindow) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "per-minute rate limit exceeded"})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": gin.H{
+					"message": "per-minute rate limit exceeded",
+					"type":    "requests",
+					"code":    "rate_limit_exceeded",
+				},
+			})
 			return
 		}
 	}
@@ -73,7 +85,13 @@ func (s *Server) limitMiddleware(c *gin.Context) {
 	if key.RateLimitPerDay > 0 {
 		dayWindow := time.Now().UTC().YearDay()
 		if !checkRate(&perDayCounters, key.ID, key.RateLimitPerDay, dayWindow) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "per-day rate limit exceeded"})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": gin.H{
+					"message": "per-day rate limit exceeded",
+					"type":    "requests",
+					"code":    "rate_limit_exceeded",
+				},
+			})
 			return
 		}
 	}

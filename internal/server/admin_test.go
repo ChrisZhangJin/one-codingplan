@@ -567,8 +567,18 @@ func TestLimitMiddleware_TokenBudget(t *testing.T) {
 	}
 	var m map[string]interface{}
 	json.NewDecoder(w.Body).Decode(&m)
-	if m["error"] != "token budget exceeded" {
-		t.Errorf("expected error=token budget exceeded, got %v", m)
+	errObj, ok := m["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected nested error object, got %v", m["error"])
+	}
+	if errObj["code"] != "rate_limit_exceeded" {
+		t.Errorf("expected code=rate_limit_exceeded, got %v", errObj["code"])
+	}
+	if errObj["message"] != "token budget exceeded" {
+		t.Errorf("expected message='token budget exceeded', got %v", errObj["message"])
+	}
+	if errObj["type"] != "requests" {
+		t.Errorf("expected type=requests, got %v", errObj["type"])
 	}
 }
 
@@ -639,6 +649,25 @@ func TestLimitMiddleware_RatePerMinute(t *testing.T) {
 	code := doReq()
 	if code != http.StatusTooManyRequests {
 		t.Errorf("expected 429 on third request (limit=2), got %d", code)
+	}
+
+	// Verify OpenAI error format on the 429 response
+	req4 := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-4","messages":[]}`)))
+	req4.Header.Set("Authorization", "Bearer ocp-rate-token-1")
+	req4.Header.Set("Content-Type", "application/json")
+	w4 := httptest.NewRecorder()
+	engine.ServeHTTP(w4, req4)
+	var m map[string]interface{}
+	json.NewDecoder(w4.Body).Decode(&m)
+	errObj, ok := m["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected nested error object, got %v", m["error"])
+	}
+	if errObj["code"] != "rate_limit_exceeded" {
+		t.Errorf("expected code=rate_limit_exceeded, got %v", errObj["code"])
+	}
+	if errObj["message"] != "per-minute rate limit exceeded" {
+		t.Errorf("expected message='per-minute rate limit exceeded', got %v", errObj["message"])
 	}
 }
 
