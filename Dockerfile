@@ -22,4 +22,5 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-builder /app/ocp /usr/local/bin/ocp
 EXPOSE 8080
-ENTRYPOINT ["ocp", "serve"]
+ENTRYPOINT ["ocp"]
+CMD ["serve"]

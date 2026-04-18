@@ -2,8 +2,13 @@ web/node_modules
 web/dist
 internal/server/web_dist
 *.log
+*.db
 nohup.out
+run_ocp.sh
 data/
-ocp
+/ocp
 .planning/
 .claude/
+.git
+.env
+config.yaml
