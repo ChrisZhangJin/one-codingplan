@@ -27,7 +27,7 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
 
 - [ ] **Phase 9: Rate Limit Backend** - Per-minute and per-day request caps enforced via admin API and middleware
 - [x] **Phase 10: Rate Limit Portal** - Rate limit fields visible and editable in web portal per key (completed 2026-04-18)
-- [ ] **Phase 11: Docker Deployment** - Service builds, runs, and persists via Dockerfile + docker-compose
+- [x] **Phase 11: Docker Deployment** - Service builds, runs, and persists via Dockerfile + docker-compose (completed 2026-04-18)
 
 ## Phase Details
 
@@ -65,9 +65,9 @@ Plans:
   2. `docker compose up` starts the service and it responds to `GET /health` and proxies requests
   3. Stopping and restarting the container via `docker compose down` then `docker compose up` preserves all upstreams, keys, and usage records
   4. `docker compose run ocp-cli status` returns current upstream pool status without error
-**Plans:** 1 plan
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 11-01-PLAN.md — Fix Dockerfile, compose, and config for working Docker deployment
+- [x] 11-01-PLAN.md — Fix Dockerfile, compose, and config for working Docker deployment
 
 ## Progress
 
@@ -83,7 +83,7 @@ Plans:
 | 8. Upstream Format Flexibility | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
 | 9. Rate Limit Backend | v1.1 | 0/1 | In progress | - |
 | 10. Rate Limit Portal | v1.1 | 1/1 | Complete    | 2026-04-18 |
-| 11. Docker Deployment | v1.1 | 0/1 | Not started | - |
+| 11. Docker Deployment | v1.1 | 2/2 | Complete    | 2026-04-18 |
 
 ---
 *Roadmap created: 2026-04-16 · v1.0 archived: 2026-04-17 · v1.1 phases added: 2026-04-18*

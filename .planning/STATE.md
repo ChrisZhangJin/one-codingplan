@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Ops
 status: unknown
-last_updated: "2026-04-18T07:23:07.017Z"
+last_updated: "2026-04-18T12:29:55.333Z"
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17 after v1.0)
 
 **Core value:** A single endpoint that never goes down — when one upstream coding plan runs out of credits or hits a rate limit, ocp silently rotates to the next available one.
-**Current focus:** v1.1 Ops — per-key rate limiting and production Docker deployment
+**Current focus:** Phase 11 — docker-deployment
 
 ---
 
