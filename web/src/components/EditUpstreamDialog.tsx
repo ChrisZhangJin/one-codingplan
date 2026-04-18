@@ -59,11 +59,8 @@ export default function EditUpstreamDialog({
     if (!upstream) return
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = {}
-      if (name !== upstream.name) body.name = name
-      if (baseUrl !== upstream.base_url) body.base_url = baseUrl
+      const body: Record<string, unknown> = { name, base_url: baseUrl, model_override: modelOverride }
       if (apiKey !== '') body.api_key = apiKey
-      if (modelOverride !== (upstream.model_override ?? '')) body.model_override = modelOverride
 
       await apiFetch(`/api/upstreams/${upstream.id}`, {
         method: 'PATCH',
