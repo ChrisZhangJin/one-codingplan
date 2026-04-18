@@ -17,17 +17,16 @@ A single endpoint that never goes down: when one upstream coding plan runs out o
 **Tech stack:** Go + Gin + GORM/SQLite + React/Vite/shadcn + Cobra
 **Binary:** Single deployable binary with embedded web portal
 
-All 8 v1.0 phases complete. The proxy is operational with:
+All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 - OpenAI and Anthropic relay endpoints with transparent translation
 - Round-robin failover with per-provider error classification (credits/rate-limit/transient/model-config)
 - Per-upstream `format` flag for native Anthropic upstreams (no translation)
 - Admin API (access key lifecycle, upstream control, usage queries)
 - Web portal at `/` (upstream health, key management)
 - CLI (`ocp status`, `ocp next`, `ocp keys`)
+- Docker deployment: multi-stage Dockerfile, docker-compose with service + CLI profiles, data persistence
 
-## Current Milestone: v1.1 Ops
-
-**Goal:** Add per-key rate limiting and production-ready Docker deployment.
+## Current Milestone: v1.1 Ops — COMPLETE
 
 **Target features:**
 - Per-key rate limits: per-minute and per-day request caps enforced on access keys, configurable via admin API and portal
@@ -53,12 +52,12 @@ All 8 v1.0 phases complete. The proxy is operational with:
 - ✓ Per-upstream `format` flag — direct Anthropic passthrough for native Anthropic upstreams — v1.0
 - ✓ Model/config error classification — `ClassModelNotSupported` permanently disables misconfigured upstream — v1.0
 
-### Active (v1.1)
+### Validated (v1.1)
 
-- [ ] Per-minute and per-day request limits enforced on access keys
-- [ ] Rate limit status visible per key in web portal
-- [ ] Service builds and runs in Docker container via Dockerfile + docker-compose
-- [ ] CLI controller runs on-demand via docker compose run
+- ✓ Per-minute and per-day request limits enforced on access keys — v1.1 (Phase 9-10)
+- ✓ Rate limit status visible per key in web portal — v1.1 (Phase 10)
+- ✓ Service builds and runs in Docker container via Dockerfile + docker-compose — v1.1 (Phase 11)
+- ✓ CLI controller runs on-demand via docker compose run — v1.1 (Phase 11)
 
 ### Deferred (v1.2+)
 
@@ -105,4 +104,4 @@ All 8 v1.0 phases complete. The proxy is operational with:
 | Reuse proxyStream/proxyBuffer for Anthropic passthrough | No translation needed — verbatim copy functions already exist | ✓ Good — no new functions needed |
 
 ---
-*Last updated: 2026-04-17 after v1.0 milestone completion*
+*Last updated: 2026-04-18 after v1.1 milestone completion (Phase 11: Docker deployment)*
