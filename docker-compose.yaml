@@ -1,8 +1,5 @@
 services:
   ocp:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: one-codingplan:latest
     container_name: ocp-server
     restart: unless-stopped
