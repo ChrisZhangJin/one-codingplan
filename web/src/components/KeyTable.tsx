@@ -28,6 +28,7 @@ interface KeyResponse {
   expires_at?: string
   rate_limit_per_minute: number
   rate_limit_per_day: number
+  day_usage: number
   usage_total_input: number
   usage_total_output: number
   created_at: string
@@ -97,6 +98,9 @@ export default function KeyTable() {
               <TableHead className="text-xs font-normal">Budget</TableHead>
               <TableHead className="text-xs font-normal">Expires</TableHead>
               <TableHead className="text-xs font-normal">Usage</TableHead>
+              <TableHead className="text-xs font-normal">Rate/min</TableHead>
+              <TableHead className="text-xs font-normal">Rate/day</TableHead>
+              <TableHead className="text-xs font-normal">Today</TableHead>
               <TableHead className="text-xs font-normal">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -123,6 +127,13 @@ export default function KeyTable() {
                 <TableCell className="text-sm">
                   {(key.usage_total_input + key.usage_total_output).toLocaleString()} tokens
                 </TableCell>
+                <TableCell className="text-sm">
+                  {key.rate_limit_per_minute === 0 ? 'Unlimited' : key.rate_limit_per_minute}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {key.rate_limit_per_day === 0 ? 'Unlimited' : key.rate_limit_per_day}
+                </TableCell>
+                <TableCell className="text-sm">{key.day_usage}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
                     <Button

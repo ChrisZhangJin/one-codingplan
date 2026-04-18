@@ -23,6 +23,7 @@ interface KeyResponse {
   expires_at?: string
   rate_limit_per_minute: number
   rate_limit_per_day: number
+  day_usage: number
   usage_total_input: number
   usage_total_output: number
   created_at: string
