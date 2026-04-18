@@ -11,7 +11,7 @@ requires:
 
 provides:
   - Valid golang:1.25-alpine image tag in Dockerfile go-builder stage
-  - Human verification checklist for DOCK-02/03/04 runtime tests
+  - Human-verified runtime confirmation of all four DOCK requirements
 
 affects: [docker-deployment, runtime-verification]
 
@@ -30,38 +30,39 @@ key-decisions:
 
 patterns-established: []
 
-requirements-completed: [DOCK-01]
+requirements-completed: [DOCK-01, DOCK-02, DOCK-03, DOCK-04]
 
 # Metrics
-duration: 5min
+duration: 10min
 completed: 2026-04-18
 ---
 
 # Phase 11 Plan 02: Docker Deployment Gap Closure Summary
 
-**Dockerfile go-builder stage restored to valid golang:1.25-alpine tag; human verification checklist provided for DOCK-02/03/04 runtime tests**
+**Dockerfile go-builder stage restored to valid golang:1.25-alpine tag; all four DOCK runtime tests (DOCK-01 through DOCK-04) confirmed passing by human operator**
 
-## Status: PAUSED AT CHECKPOINT
+## Status: COMPLETE
 
-Task 1 complete. Task 2 (Runtime Docker Verification) is a human-verify checkpoint — all four DOCK runtime tests require a machine with Docker installed.
+Both tasks complete. Task 1 fixed the broken image tag (committed). Task 2 human verification approved — all four DOCK runtime tests passed on a Docker-capable host.
 
 ## Performance
 
-- **Duration:** ~5 min
+- **Duration:** ~10 min
 - **Started:** 2026-04-18T00:00:00Z
-- **Completed:** 2026-04-18 (partial — checkpoint at Task 2)
-- **Tasks:** 1 of 2 complete
+- **Completed:** 2026-04-18
+- **Tasks:** 2 of 2 complete
 - **Files modified:** 1
 
 ## Accomplishments
 
 - Fixed Dockerfile: `golang:1.25.9-alpine` (non-existent) → `golang:1.25-alpine` (valid)
 - All other Dockerfile lines left unchanged (node:24-slim, alpine:3.23.2 are valid)
+- Human operator confirmed all four DOCK runtime tests pass on a Docker-capable host
 
 ## Task Commits
 
-1. **Task 1: Fix Dockerfile golang image tag** - `433a376` (fix)
-2. **Task 2: Runtime Docker verification** - PENDING human verification
+1. **Task 1: Fix Dockerfile golang image tag** — `433a376` (fix)
+2. **Task 2: Runtime Docker verification** — human approved (no code changes)
 
 ## Files Created/Modified
 
@@ -69,74 +70,40 @@ Task 1 complete. Task 2 (Runtime Docker Verification) is a human-verify checkpoi
 
 ## Decisions Made
 
-None - followed plan as specified.
+None — followed plan as specified.
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+None — plan executed exactly as written.
 
 ## Issues Encountered
 
 None.
 
-## User Setup Required
+## Requirements Verified
 
-**Runtime Docker verification required.** Run the following on a Docker-capable host:
+| Requirement | Test | Result |
+|-------------|------|--------|
+| DOCK-01 | `docker build -t one-codingplan:latest .` | PASS — exits 0, all three stages complete |
+| DOCK-02 | `docker compose up -d` + `curl http://localhost:8080/health` | PASS — returns `{"status":"ok"}` HTTP 200 |
+| DOCK-03 | Restart with `docker compose down && up`, check `./data/ocp.db` | PASS — health 200 after restart, db file persists |
+| DOCK-04 | `docker compose run --rm ocp-cli status` | PASS — exits 0, prints NAME/HEALTHY/POSITION/ENABLED table |
 
-**Setup (once):**
-```bash
-cd /path/to/one-codingplan
-cp config.yaml.example config.yaml
-# Edit config.yaml: set admin_key to a real value
-cat > .env << 'EOF'
-OCP_ENCRYPTION_KEY=change-me-32-bytes-exactly-here
-OCP_ADMIN_KEY=your-admin-key-here
-EOF
-mkdir -p data
-```
+## Known Stubs
 
-**Test 1 — DOCK-01: Docker Build**
-```bash
-docker build -t one-codingplan:latest .
-```
-Expected: exits 0, all three stages complete.
+None — no placeholder data flows or stub components introduced.
 
-**Test 2 — DOCK-02: Compose Up + Health**
-```bash
-docker compose up -d
-sleep 5
-curl -sf http://localhost:8080/health
-```
-Expected: `{"status":"ok"}` HTTP 200.
+## Threat Flags
 
-**Test 3 — DOCK-03: Database Persistence**
-```bash
-docker compose down
-docker compose up -d
-sleep 5
-curl -sf http://localhost:8080/health
-ls -la ./data/ocp.db
-```
-Expected: health 200 after restart, `./data/ocp.db` exists.
+No new security surface introduced beyond T-11-01 in the plan's threat model.
 
-**Test 4 — DOCK-04: CLI via Compose**
-```bash
-docker compose run --rm ocp-cli status
-```
-Expected: exits 0, prints upstream table with NAME/HEALTHY/POSITION/ENABLED headers.
+## Self-Check: PASSED
 
-**Cleanup:**
-```bash
-docker compose down
-rm -f config.yaml .env
-```
-
-## Next Phase Readiness
-
-- DOCK-01 static check: PASS (valid image tag committed)
-- DOCK-02/03/04: Pending human runtime verification
-- Resume signal: "approved" if all 4 tests pass, or describe failures
+- FOUND: .planning/phases/11-docker-deployment/11-02-SUMMARY.md
+- FOUND: commit 433a376 (Task 1 — Dockerfile golang tag fix)
+- Dockerfile verified: `golang:1.25-alpine` (no `golang:1.25.9` present)
+- Task 2: human operator approved — all 4 DOCK tests passed
 
 ---
 *Phase: 11-docker-deployment*
-*Completed: 2026-04-18 (partial)*
+*Completed: 2026-04-18*
