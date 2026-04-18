@@ -105,3 +105,47 @@ type OpenAIUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 }
+
+// --- Responses API types (OpenAI Responses API for Codex) ---
+
+type ResponsesRequest struct {
+	Model        string          `json:"model"`
+	Input        json.RawMessage `json:"input"`
+	Instructions string          `json:"instructions,omitempty"`
+	Stream       bool            `json:"stream,omitempty"`
+}
+
+type ResponsesInputMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ResponsesResponse struct {
+	ID        string            `json:"id"`
+	Object    string            `json:"object"`
+	CreatedAt int64             `json:"created_at"`
+	Status    string            `json:"status"`
+	Model     string            `json:"model"`
+	Output    []ResponsesOutput `json:"output"`
+	Usage     ResponsesUsage    `json:"usage"`
+}
+
+type ResponsesOutput struct {
+	Type    string                 `json:"type"`
+	ID      string                 `json:"id"`
+	Status  string                 `json:"status"`
+	Role    string                 `json:"role"`
+	Content []ResponsesContentPart `json:"content"`
+}
+
+type ResponsesContentPart struct {
+	Type        string   `json:"type"`
+	Text        string   `json:"text"`
+	Annotations []string `json:"annotations,omitempty"`
+}
+
+type ResponsesUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}

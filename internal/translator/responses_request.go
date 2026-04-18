@@ -1,0 +1,64 @@
+package translator
+
+import (
+	"encoding/json"
+	"errors"
+)
+
+var ErrStringInput = errors.New("input must be an array, not a string")
+
+// ParseResponsesInput validates and parses the raw JSON input field.
+// Returns ErrStringInput if the input is a JSON string (per D-02).
+func ParseResponsesInput(raw json.RawMessage) ([]ResponsesInputMessage, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	trimmed := raw
+	for i, b := range trimmed {
+		if b == ' ' || b == '\t' || b == '\n' || b == '\r' {
+			continue
+		}
+		trimmed = trimmed[i:]
+		break
+	}
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		return nil, ErrStringInput
+	}
+	var msgs []ResponsesInputMessage
+	if err := json.Unmarshal(raw, &msgs); err != nil {
+		return nil, err
+	}
+	return msgs, nil
+}
+
+// ResponsesRequestToOpenAI translates a parsed Responses API request to an OpenAI chat completions request.
+// If modelOverride is non-empty, it replaces the model field.
+// The instructions field is prepended as a system message (per D-03).
+func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessage, modelOverride string) OpenAIRequest {
+	model := req.Model
+	if modelOverride != "" {
+		model = modelOverride
+	}
+
+	var messages []OpenAIMessage
+
+	if req.Instructions != "" {
+		messages = append(messages, OpenAIMessage{
+			Role:    "system",
+			Content: req.Instructions,
+		})
+	}
+
+	for _, m := range msgs {
+		messages = append(messages, OpenAIMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	return OpenAIRequest{
+		Model:    model,
+		Messages: messages,
+		Stream:   req.Stream,
+	}
+}
