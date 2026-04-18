@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Ops
-status: unknown
-last_updated: "2026-04-18T12:29:55.333Z"
+milestone: v1.2
+milestone_name: Codex + Portal UX
+status: defining_requirements
+last_updated: "2026-04-18T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -30,9 +30,10 @@ See: .planning/PROJECT.md (updated 2026-04-17 after v1.0)
 
 ## Current Phase
 
-**Phase 9: Rate Limit Backend** — Not started
-
-Next: Run `/gsd-plan-phase 9` to plan Phase 9.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements for v1.2
+Last activity: 2026-04-18 — Milestone v1.2 started
 
 ---
 
@@ -43,8 +44,8 @@ Next: Run `/gsd-plan-phase 9` to plan Phase 9.
 | v1.0 phases | 8/8 complete |
 | v1.0 plans | 18/18 complete |
 | v1.0 requirements | 26/26 mapped |
-| v1.1 phases | 0/3 complete |
-| v1.1 requirements | 0/10 complete |
+| v1.1 phases | 3/3 complete |
+| v1.1 requirements | 10/10 complete |
 | Timeline | v1.0: 2026-04-16 → 2026-04-17 (2 days) |
 
 ---

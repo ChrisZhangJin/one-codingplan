@@ -26,7 +26,16 @@ All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 - CLI (`ocp status`, `ocp next`, `ocp keys`)
 - Docker deployment: multi-stage Dockerfile, docker-compose with service + CLI profiles, data persistence
 
-## Current Milestone: v1.1 Ops — COMPLETE
+## Current Milestone: v1.2 Codex + Portal UX
+
+**Goal:** Add Codex CLI support via OpenAI Responses API translation, and fill two portal gaps — upstream creation and per-key usage visibility.
+
+**Target features:**
+- Codex CLI connects to ocp: accept `/v1/responses` requests, translate to `/v1/chat/completions`, forward to upstreams
+- Web portal: add new upstream (name, base URL, API key, model override) without editing config.yaml manually
+- Web portal: usage statistics page showing requests and tokens broken down per access key
+
+## Previous Milestone: v1.1 Ops — COMPLETE
 
 **Target features:**
 - Per-key rate limits: per-minute and per-day request caps enforced on access keys, configurable via admin API and portal
@@ -59,7 +68,15 @@ All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 - ✓ Service builds and runs in Docker container via Dockerfile + docker-compose — v1.1 (Phase 11)
 - ✓ CLI controller runs on-demand via docker compose run — v1.1 (Phase 11)
 
-### Deferred (v1.2+)
+### Active (v1.2)
+
+- [ ] OpenAI Responses API endpoint (`/v1/responses`) — accepts Codex CLI requests, translates to `/v1/chat/completions`
+- [ ] Streaming support for `/v1/responses` (Codex uses streaming by default)
+- [ ] Web portal: add new upstream via form (name, base URL, API key, model override)
+- [ ] Web portal: usage statistics page with per-key request and token breakdown
+- [ ] Backend API: usage aggregation endpoint for portal to query
+
+### Deferred (v1.3+)
 
 - [ ] Proactive upstream health polling — poll Kimi `/v1/users/me/balance` every 5 min; mark unhealthy when balance is zero
 - [ ] Web portal upstream dashboard: real-time health, credits remaining, request counts per provider
@@ -104,4 +121,4 @@ All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 | Reuse proxyStream/proxyBuffer for Anthropic passthrough | No translation needed — verbatim copy functions already exist | ✓ Good — no new functions needed |
 
 ---
-*Last updated: 2026-04-18 after v1.1 milestone completion (Phase 11: Docker deployment)*
+*Last updated: 2026-04-18 — v1.2 Codex + Portal UX milestone started*
