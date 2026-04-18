@@ -40,7 +40,9 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
   2. A request from a key that has hit its per-minute limit receives a 429 response with no upstream call made
   3. A request from a key that has hit its per-day limit receives a 429 response with no upstream call made
   4. Per-minute and per-day limits independently enforce: exhausting one does not affect the other's counter
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 09-01-PLAN.md — Update 429 format to OpenAI-compatible, add per-day test, fix e2e field name
 
 ### Phase 10: Rate Limit Portal
 **Goal**: Operators can see and update rate limit configuration for any key directly from the web portal
@@ -76,7 +78,7 @@ Full phase details: `.planning/milestones/v1.0-ROADMAP.md`
 | 6. Web Portal | v1.0 | 3/3 | ✅ Complete | 2026-04-17 |
 | 7. CLI | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
 | 8. Upstream Format Flexibility | v1.0 | 2/2 | ✅ Complete | 2026-04-17 |
-| 9. Rate Limit Backend | v1.1 | 0/? | Not started | - |
+| 9. Rate Limit Backend | v1.1 | 0/1 | In progress | - |
 | 10. Rate Limit Portal | v1.1 | 0/? | Not started | - |
 | 11. Docker Deployment | v1.1 | 0/? | Not started | - |
 
