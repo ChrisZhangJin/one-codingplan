@@ -1,28 +1,32 @@
-# Requirements: v1.1 Ops
+# Requirements: v1.2 Codex + Portal UX
 
 ## Milestone Goal
 
-Add per-key rate limiting and production-ready Docker deployment.
+Add Codex CLI support via OpenAI Responses API translation, and fill two portal gaps — upstream creation and per-key usage visibility.
 
 ---
 
-## v1.1 Requirements
+## v1.2 Requirements
 
-### Rate Limiting
+### Responses API (Codex Support)
 
-- [ ] **RATE-01**: Admin can set a per-minute request limit on an access key via the admin API
-- [ ] **RATE-02**: Admin can set a per-day request limit on an access key via the admin API
-- [ ] **RATE-03**: Requests from a key that exceeds its per-minute limit receive a 429 response
-- [ ] **RATE-04**: Requests from a key that exceeds its per-day limit receive a 429 response
-- [ ] **RATE-05**: Rate limit fields (per-minute, per-day, current usage) are visible per key in the web portal
-- [ ] **RATE-06**: Admin can update rate limits on existing keys via the edit key dialog in the portal
+- [ ] **RESP-01**: Codex CLI can send requests to ocp's `/v1/responses` endpoint using an ocp access key
+- [ ] **RESP-02**: ocp translates `/v1/responses` request body to `/v1/chat/completions` format before forwarding to upstream
+- [ ] **RESP-03**: ocp translates the upstream `/v1/chat/completions` response back to Responses API format before returning to Codex
+- [ ] **RESP-04**: Streaming responses via `/v1/responses` work end-to-end (Codex uses streaming by default)
+- [ ] **RESP-05**: `/v1/responses` requests go through the same auth, failover, and rate-limit middleware as other endpoints
 
-### Docker Deployment
+### Upstream Management
 
-- [ ] **DOCK-01**: Service builds successfully via `docker build` using the provided Dockerfile
-- [ ] **DOCK-02**: Service starts and serves requests via `docker compose up`
-- [ ] **DOCK-03**: Database file persists across container restarts via mounted volume
-- [ ] **DOCK-04**: CLI controller (`ocp-cli`) runs on-demand via `docker compose run`
+- [ ] **UPST-01**: Operator can create a new upstream via the web portal without editing config.yaml
+- [ ] **UPST-02**: Add upstream form includes: name, base URL, API key, and model override fields
+- [ ] **UPST-03**: Newly created upstream is immediately active in the pool and visible in the upstream list
+
+### Usage Statistics
+
+- [ ] **STAT-01**: Portal has a Usage page accessible from the main navigation
+- [ ] **STAT-02**: Usage page shows per-key totals: total requests, total input tokens, total output tokens
+- [ ] **STAT-03**: Backend exposes an API endpoint that aggregates usage records grouped by access key
 
 ---
 
@@ -33,28 +37,31 @@ Add per-key rate limiting and production-ready Docker deployment.
 - Usage charts (requests/tokens over time, per-upstream breakdown)
 - Prometheus-compatible `/metrics` endpoint
 - Per-token rate limits (in addition to per-request)
+- Usage breakdown per upstream (in addition to per-key)
+- Time-series view on usage statistics page
 
 ---
 
-## Out of Scope (v1.1)
+## Out of Scope (v1.2)
 
-- Per-token day/minute limits — per-request limits are sufficient for this milestone
-- Rate limit persistence across server restarts for in-flight windows — reset on restart is acceptable
-- OAuth/SSO — static admin key is sufficient
+- Full Responses API feature parity (file search, code interpreter, web search tools) — translation covers text/streaming only
+- Usage statistics per upstream — per-key is sufficient for this milestone
+- Time-series charts — aggregate totals per key are sufficient
 
 ---
 
 ## Traceability
 
-| REQ-ID  | Description                        | Phase    | Status  |
-|---------|------------------------------------|----------|---------|
-| RATE-01 | Admin sets per-minute limit        | Phase 9  | Pending |
-| RATE-02 | Admin sets per-day limit           | Phase 9  | Pending |
-| RATE-03 | 429 on per-minute exceeded         | Phase 9  | Pending |
-| RATE-04 | 429 on per-day exceeded            | Phase 9  | Pending |
-| RATE-05 | Rate limit visible in portal       | Phase 10 | Pending |
-| RATE-06 | Edit rate limits via portal        | Phase 10 | Pending |
-| DOCK-01 | docker build succeeds              | Phase 11 | Pending |
-| DOCK-02 | docker compose up serves requests  | Phase 11 | Pending |
-| DOCK-03 | DB persists via volume             | Phase 11 | Pending |
-| DOCK-04 | ocp-cli runs via compose run       | Phase 11 | Pending |
+| REQ-ID  | Description                                    | Phase    | Status  |
+|---------|------------------------------------------------|----------|---------|
+| RESP-01 | Codex connects to /v1/responses                | Phase 12 | Pending |
+| RESP-02 | Translate /v1/responses → /v1/chat/completions | Phase 12 | Pending |
+| RESP-03 | Translate response back to Responses API format | Phase 12 | Pending |
+| RESP-04 | Streaming via /v1/responses                    | Phase 12 | Pending |
+| RESP-05 | Auth + failover + rate-limit on /v1/responses  | Phase 12 | Pending |
+| UPST-01 | Create upstream via portal                     | Phase 13 | Pending |
+| UPST-02 | Add form: name, URL, key, model override       | Phase 13 | Pending |
+| UPST-03 | New upstream immediately active in pool        | Phase 13 | Pending |
+| STAT-01 | Usage page in portal nav                       | Phase 13 | Pending |
+| STAT-02 | Per-key totals: requests + tokens              | Phase 13 | Pending |
+| STAT-03 | Backend usage aggregation API                  | Phase 13 | Pending |
