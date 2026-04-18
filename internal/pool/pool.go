@@ -184,6 +184,24 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride string)
 	}
 }
 
+// AddEntry adds a new upstream entry to the pool.
+// The entry is marked available and enabled.
+func (p *Pool) AddEntry(id uint, name, baseURL, apiKey, modelOverride string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.entries = append(p.entries, entry{
+		UpstreamEntry: UpstreamEntry{
+			ID:            id,
+			Name:          name,
+			BaseURL:       baseURL,
+			APIKey:        apiKey,
+			ModelOverride: modelOverride,
+		},
+		available: true,
+		enabled:   true,
+	})
+}
+
 // Mark sets the availability of the upstream with the given id.
 func (p *Pool) Mark(id uint, available bool) {
 	p.mu.Lock()

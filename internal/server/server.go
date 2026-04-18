@@ -53,6 +53,7 @@ func (s *Server) Engine() *gin.Engine {
 	api.DELETE("/keys/:id", s.handleDeleteKey)
 	api.POST("/keys/:id/block", s.handleBlockKey)
 	api.POST("/keys/:id/unblock", s.handleUnblockKey)
+	api.POST("/upstreams", s.handleCreateUpstream)
 	api.POST("/upstreams/rotate", s.handleRotateUpstream)
 	api.GET("/upstreams", s.handleListUpstreams)
 	api.PATCH("/upstreams/:id", s.handleUpdateUpstream)

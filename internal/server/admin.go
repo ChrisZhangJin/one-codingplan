@@ -277,6 +277,60 @@ func (s *Server) handleDeleteKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "key deleted"})
 }
 
+type createUpstreamRequest struct {
+	Name          string `json:"name" binding:"required"`
+	BaseURL       string `json:"base_url" binding:"required"`
+	APIKey        string `json:"api_key" binding:"required"`
+	ModelOverride string `json:"model_override"`
+}
+
+func (s *Server) handleCreateUpstream(c *gin.Context) {
+	var req createUpstreamRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	enc, err := crypto.Encrypt(s.encKey, req.APIKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encrypt api key"})
+		return
+	}
+
+	upstream := models.Upstream{
+		Name:          req.Name,
+		BaseURL:       req.BaseURL,
+		APIKeyEnc:     enc,
+		Enabled:       true,
+		ModelOverride: req.ModelOverride,
+	}
+	if err := s.db.Create(&upstream).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream"})
+		return
+	}
+
+	s.pool.AddEntry(upstream.ID, upstream.Name, upstream.BaseURL, req.APIKey, upstream.ModelOverride)
+
+	maskedKey := maskAPIKey(req.APIKey)
+	info := s.pool.List()
+	for _, u := range info {
+		if u.ID == upstream.ID {
+			u.MaskedKey = maskedKey
+			c.JSON(http.StatusCreated, u)
+			return
+		}
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":             upstream.ID,
+		"name":           upstream.Name,
+		"base_url":       upstream.BaseURL,
+		"model_override": upstream.ModelOverride,
+		"masked_key":     maskedKey,
+		"enabled":        true,
+		"available":      true,
+	})
+}
+
 type patchUpstreamRequest struct {
 	Name          *string `json:"name"`
 	BaseURL       *string `json:"base_url"`
