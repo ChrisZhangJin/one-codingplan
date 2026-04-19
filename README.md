@@ -113,6 +113,46 @@ curl http://localhost:9189/v1/messages \
 
 ---
 
+## Database Initialization
+
+ocp uses SQLite and creates the schema automatically via GORM `AutoMigrate` on first startup. No manual setup is required for a fresh deployment.
+
+If you prefer to initialize the database manually (e.g. for a clean environment or CI), use the provided `init.sql`:
+
+```bash
+sqlite3 ocp.db < init.sql
+```
+
+`init.sql` includes:
+- Full table and index definitions (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`)
+- Seed rows for all supported upstream providers with blank API keys
+
+After initializing, set real API keys via the portal (**Upstream Status → Edit**) or the admin API:
+
+```bash
+curl -X PATCH http://localhost:9189/api/upstreams/<id> \
+  -H "Authorization: Bearer changeme123" \
+  -H "Content-Type: application/json" \
+  -d '{"api_key": "your-real-key"}'
+```
+
+> **Note:** Re-running `init.sql` on an existing database is safe — all inserts use `INSERT OR IGNORE`.
+
+---
+
+## Access Key Error Codes
+
+| Situation | HTTP Status | Error |
+|-----------|-------------|-------|
+| Missing or unknown token | 401 Unauthorized | `unauthorized` |
+| Key disabled / blocked | 403 Forbidden | `key disabled` |
+| Key expired | 403 Forbidden | `key expired` |
+| Token budget exceeded | 429 Too Many Requests | `token budget exceeded` |
+| Per-minute rate limit exceeded | 429 Too Many Requests | `per-minute rate limit exceeded` |
+| Per-day rate limit exceeded | 429 Too Many Requests | `per-day rate limit exceeded` |
+
+---
+
 ## Database Schema / 数据库结构
 
 SQLite file at the path configured in `database.path` (default: `./ocp.db`).
