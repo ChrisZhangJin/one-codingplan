@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Info, Pencil } from 'lucide-react'
+import { Copy, Info, Pencil } from 'lucide-react'
+
+function copyText(text: string) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text)
+    return
+  }
+  const el = document.createElement('textarea')
+  el.value = text
+  el.style.position = 'fixed'
+  el.style.opacity = '0'
+  document.body.appendChild(el)
+  el.select()
+  document.execCommand('copy')
+  document.body.removeChild(el)
+}
 import { toast } from 'sonner'
 
 import { apiFetch } from '@/lib/api'
@@ -33,6 +48,23 @@ interface KeyResponse {
   usage_total_output: number
   created_at: string
   updated_at: string
+}
+
+function maskToken(token: string): string {
+  if (token.length <= 10) return '***'
+  return token.slice(0, 7) + '***' + token.slice(-3)
+}
+
+function getKeyStatus(key: KeyResponse): { label: string; className: string } {
+  if (!key.enabled)
+    return { label: 'Blocked', className: 'bg-red-500/10 text-red-600 border-red-200' }
+  if (key.expires_at && new Date(key.expires_at) < new Date())
+    return { label: 'Expired', className: 'bg-gray-500/10 text-gray-500 border-gray-200' }
+  if (key.token_budget > 0 && key.usage_total_input + key.usage_total_output >= key.token_budget)
+    return { label: 'Out of Budget', className: 'bg-amber-500/10 text-amber-600 border-amber-200' }
+  if (key.rate_limit_per_day > 0 && key.day_usage >= key.rate_limit_per_day)
+    return { label: 'Rate Limited', className: 'bg-amber-500/10 text-amber-600 border-amber-200' }
+  return { label: 'Active', className: 'bg-green-500/10 text-green-600 border-green-200' }
 }
 
 export default function KeyTable() {
@@ -93,14 +125,14 @@ export default function KeyTable() {
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs font-normal">Name</TableHead>
-              <TableHead className="text-xs font-normal">Token</TableHead>
+              <TableHead className="text-xs font-normal">Key</TableHead>
               <TableHead className="text-xs font-normal">Status</TableHead>
               <TableHead className="text-xs font-normal">Budget</TableHead>
               <TableHead className="text-xs font-normal">Expires</TableHead>
               <TableHead className="text-xs font-normal">Usage</TableHead>
               <TableHead className="text-xs font-normal">Rate/min</TableHead>
               <TableHead className="text-xs font-normal">Rate/day</TableHead>
-              <TableHead className="text-xs font-normal">Today</TableHead>
+              <TableHead className="text-xs font-normal">Today Reqs</TableHead>
               <TableHead className="text-xs font-normal">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -109,14 +141,24 @@ export default function KeyTable() {
               <TableRow key={key.id}>
                 <TableCell className="text-sm">{key.name}</TableCell>
                 <TableCell>
-                  <span className="font-mono text-xs">{key.token}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-xs">{maskToken(key.token)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Copy token"
+                      className="h-5 w-5 p-0"
+                      onClick={() => {
+                        copyText(key.token)
+                        toast.success('Token copied')
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </TableCell>
                 <TableCell>
-                  {key.enabled ? (
-                    <Badge>Active</Badge>
-                  ) : (
-                    <Badge className="bg-red-500/10 text-red-600 border-red-200">Blocked</Badge>
-                  )}
+                  {(() => { const s = getKeyStatus(key); return <Badge className={s.className}>{s.label}</Badge> })()}
                 </TableCell>
                 <TableCell className="text-sm">
                   {key.token_budget === 0 ? 'Unlimited' : key.token_budget.toLocaleString()}

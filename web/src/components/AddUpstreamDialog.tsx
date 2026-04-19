@@ -20,6 +20,11 @@ interface AddUpstreamDialogProps {
 }
 
 export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: AddUpstreamDialogProps) {
+  const PROVIDERS = ['minimax', 'mimo', 'kimi', 'qwen', 'glm', 'deepseek'] as const
+  const PROVIDER_LABELS: Record<string, string> = {
+    minimax: 'Minimax', mimo: 'Mimo', kimi: 'Kimi', qwen: 'Qwen', glm: 'GLM', deepseek: 'DeepSeek',
+  }
+
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -81,15 +86,18 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="add-upstream-name">Name</Label>
-            <Input
+            <Label htmlFor="add-upstream-name">Provider</Label>
+            <select
               id="add-upstream-name"
-              type="text"
-              placeholder="e.g. kimi-prod"
-              required
               value={name}
               onChange={e => setName(e.target.value)}
-            />
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            >
+              <option value="">Select provider…</option>
+              {PROVIDERS.map(p => (
+                <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="add-upstream-url">Base URL</Label>

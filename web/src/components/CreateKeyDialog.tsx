@@ -19,6 +19,33 @@ interface CreateKeyDialogProps {
   onCreated: () => void
 }
 
+function parseTokenBudget(s: string): number | null {
+  const t = s.trim()
+  if (!t) return null
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*([km]?)$/i)
+  if (!m) return null
+  const n = parseFloat(m[1])
+  const suffix = m[2].toLowerCase()
+  if (suffix === 'k') return Math.round(n * 1_000)
+  if (suffix === 'm') return Math.round(n * 1_000_000)
+  return Math.round(n)
+}
+
+function copyText(text: string) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text)
+    return
+  }
+  const el = document.createElement('textarea')
+  el.value = text
+  el.style.position = 'fixed'
+  el.style.opacity = '0'
+  document.body.appendChild(el)
+  el.select()
+  document.execCommand('copy')
+  document.body.removeChild(el)
+}
+
 export default function CreateKeyDialog({ open, onOpenChange, onCreated }: CreateKeyDialogProps) {
   const [name, setName] = useState('')
   const [tokenBudget, setTokenBudget] = useState('')
@@ -53,7 +80,15 @@ export default function CreateKeyDialog({ open, onOpenChange, onCreated }: Creat
     setSubmitting(true)
     try {
       const body: Record<string, unknown> = { name: name.trim() }
-      if (tokenBudget) body.token_budget = parseInt(tokenBudget, 10)
+      if (tokenBudget) {
+        const budget = parseTokenBudget(tokenBudget)
+        if (budget === null) {
+          toast.error('Invalid token budget — use a number like 100000, 100k, or 1.5M')
+          setSubmitting(false)
+          return
+        }
+        body.token_budget = budget
+      }
       if (allowedUpstreams) body.allowed_upstreams = allowedUpstreams.split(',').map(s => s.trim()).filter(Boolean)
       if (expiresAt) body.expires_at = new Date(expiresAt).toISOString()
       if (rateLimitPerMinute) body.rate_limit_per_minute = parseInt(rateLimitPerMinute, 10)
@@ -91,7 +126,7 @@ export default function CreateKeyDialog({ open, onOpenChange, onCreated }: Creat
               <Button
                 variant="outline"
                 onClick={() => {
-                  navigator.clipboard.writeText(createdToken)
+                  copyText(createdToken)
                   toast.success('Copied to clipboard')
                 }}
               >
@@ -115,8 +150,8 @@ export default function CreateKeyDialog({ open, onOpenChange, onCreated }: Creat
               <Label htmlFor="key-budget">Token Budget</Label>
               <Input
                 id="key-budget"
-                type="number"
-                placeholder="0 = unlimited"
+                type="text"
+                placeholder="e.g. 100k, 1.5M, 0 = unlimited"
                 value={tokenBudget}
                 onChange={e => setTokenBudget(e.target.value)}
               />

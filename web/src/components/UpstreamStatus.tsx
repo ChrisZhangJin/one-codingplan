@@ -11,6 +11,13 @@ import { Switch } from '@/components/ui/switch'
 import AddUpstreamDialog from './AddUpstreamDialog'
 import EditUpstreamDialog, { type UpstreamInfo } from './EditUpstreamDialog'
 
+const PROVIDER_LABELS: Record<string, string> = {
+  minimax: 'Minimax', mimo: 'Mimo', kimi: 'Kimi', qwen: 'Qwen', glm: 'GLM', deepseek: 'DeepSeek',
+}
+function displayName(name: string): string {
+  return PROVIDER_LABELS[name.toLowerCase()] ?? name
+}
+
 export default function UpstreamStatus() {
   const [upstreams, setUpstreams] = useState<UpstreamInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,7 +104,7 @@ export default function UpstreamStatus() {
               <Card key={upstream.id}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-normal">{upstream.name}</span>
+                    <span className="text-sm font-normal">{displayName(upstream.name)}</span>
                     <div className="flex items-center gap-1.5">
                       <span className={`h-2 w-2 rounded-full ${dot} inline-block`} />
                       <Badge className={badge.className}>{badge.label}</Badge>
