@@ -2,16 +2,18 @@
 
 ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo and others) behind a single OpenAI-compatible and Anthropic-compatible endpoint. Point your tools at one URL with one key — ocp handles routing, failover, and credit tracking transparently.
 
+> Chinese version: [README_zh.md](./README_zh.md)
+
 ---
 
-## Quick Start / 快速开始
+## Quick Start
 
-### 1. Configure / 配置
+### 1. Configure
 
 Copy and edit the config file:
 
 ```bash
-cp config.yaml.example config.yaml   # or edit config.yaml directly
+cp config.yaml.example config.yaml
 ```
 
 Key fields:
@@ -31,16 +33,16 @@ upstreams:
     enabled: true
 ```
 
-### 2. Build & Run / 构建与运行
+### 2. Build & Run
 
 ```bash
 make build
 OCP_ENCRYPTION_KEY=<16-char-secret> ./ocp --config config.yaml
 ```
 
-`OCP_ENCRYPTION_KEY` is used to encrypt upstream API keys in the database. Must be exactly 16, 24, or 32 characters.
+`OCP_ENCRYPTION_KEY` encrypts upstream API keys stored in the database. Must be exactly 16, 24, or 32 characters.
 
-### 3. Open Portal / 打开管理面板
+### 3. Open Portal
 
 Visit **http://localhost:9189** and sign in with your `admin_key`.
 
@@ -77,7 +79,7 @@ curl http://localhost:9189/api/keys \
 curl -X POST http://localhost:9189/api/keys \
   -H "Authorization: Bearer changeme123" \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-key", "token_budget": 1000000, "rate_limit_per_min": 60}'
+  -d '{"name": "my-key", "token_budget": 1000000, "rate_limit_per_minute": 60}'
 
 # Block a key
 curl -X POST http://localhost:9189/api/keys/<id>/block \
@@ -93,7 +95,7 @@ curl -X POST http://localhost:9189/api/keys/<id>/unblock \
 ```bash
 # OpenAI-compatible
 curl http://localhost:9189/v1/chat/completions \
-  -H "Authorization: Bearer ocp-<your-key-token>" \
+  -H "Authorization: Bearer ocp-<your-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4-5",
@@ -102,7 +104,7 @@ curl http://localhost:9189/v1/chat/completions \
 
 # Anthropic-compatible
 curl http://localhost:9189/v1/messages \
-  -H "Authorization: Bearer ocp-<your-key-token>" \
+  -H "Authorization: Bearer ocp-<your-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4-5",
@@ -153,7 +155,7 @@ curl -X PATCH http://localhost:9189/api/upstreams/<id> \
 
 ---
 
-## Database Schema / 数据库结构
+## Database Schema
 
 SQLite file at the path configured in `database.path` (default: `./ocp.db`).
 
@@ -167,11 +169,12 @@ SQLite file at the path configured in `database.path` (default: `./ocp.db`).
 | `api_key_enc` | BLOB | Encrypted API key |
 | `enabled` | BOOLEAN | Whether this upstream is active in the pool |
 | `available` | BOOLEAN | Runtime health — false during cooldown/circuit-open |
+| `model_override` | TEXT | Force a specific model name for this upstream; empty = pass through |
 | `created_at` | DATETIME | |
 | `updated_at` | DATETIME | |
 
 ```bash
-sqlite3 ocp.db "SELECT id, name, enabled FROM upstreams;"
+sqlite3 ocp.db "SELECT id, name, enabled, model_override FROM upstreams;"
 ```
 
 ### `access_keys`
@@ -183,8 +186,7 @@ sqlite3 ocp.db "SELECT id, name, enabled FROM upstreams;"
 | `token` | TEXT | Bearer token sent by clients (`ocp-...`) |
 | `enabled` | BOOLEAN | false = blocked, rejects all requests |
 | `token_budget` | INTEGER | Max tokens allowed (0 = unlimited) |
-| `tokens_used` | INTEGER | Cumulative tokens consumed |
-| `rate_limit_per_min` | INTEGER | Per-minute request cap (0 = unlimited) |
+| `rate_limit_per_minute` | INTEGER | Per-minute request cap (0 = unlimited) |
 | `rate_limit_per_day` | INTEGER | Per-day request cap (0 = unlimited) |
 | `allowed_upstreams` | TEXT | JSON array of upstream names; empty = all |
 | `expires_at` | DATETIME | Nullable expiry |
@@ -192,120 +194,23 @@ sqlite3 ocp.db "SELECT id, name, enabled FROM upstreams;"
 | `updated_at` | DATETIME | |
 
 ```bash
-sqlite3 ocp.db "SELECT name, token, enabled, tokens_used FROM access_keys;"
+sqlite3 ocp.db "SELECT name, token, enabled FROM access_keys;"
 ```
 
----
+### `usage_records`
 
-## 中文说明
-
-### 快速测试
-
-**启动服务：**
-
-```bash
-make build
-OCP_ENCRYPTION_KEY=1234567890123456 ./ocp --config config.yaml
-```
-
-服务默认监听 **9189** 端口。
-
-**管理面板：** 浏览器打开 `http://localhost:9189`，使用 `admin_key`（默认 `changeme123`）登录。
-
----
-
-### 管理 API 示例
-
-所有管理接口需要 `Authorization: Bearer <admin_key>` 请求头。
-
-**查看所有上游状态：**
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Primary key |
+| `created_at` | DATETIME | Indexed — use for time-range queries |
+| `key_id` | TEXT | References `access_keys.id` |
+| `upstream_id` | INTEGER | References `upstreams.id` |
+| `upstream_name` | TEXT | Provider name at time of request |
+| `input_tokens` | INTEGER | |
+| `output_tokens` | INTEGER | |
+| `latency_ms` | INTEGER | End-to-end request latency |
+| `success` | BOOLEAN | false if upstream returned an error |
 
 ```bash
-curl http://localhost:9189/api/upstreams \
-  -H "Authorization: Bearer changeme123"
-```
-
-**切换上游启用/禁用（id 从列表获取）：**
-
-```bash
-curl -X POST http://localhost:9189/api/upstreams/1/toggle \
-  -H "Authorization: Bearer changeme123"
-```
-
-**查看所有访问密钥：**
-
-```bash
-curl http://localhost:9189/api/keys \
-  -H "Authorization: Bearer changeme123"
-```
-
-**创建访问密钥：**
-
-```bash
-curl -X POST http://localhost:9189/api/keys \
-  -H "Authorization: Bearer changeme123" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-key", "token_budget": 1000000, "rate_limit_per_min": 60}'
-```
-
-**封禁 / 解封密钥：**
-
-```bash
-curl -X POST http://localhost:9189/api/keys/<id>/block \
-  -H "Authorization: Bearer changeme123"
-
-curl -X POST http://localhost:9189/api/keys/<id>/unblock \
-  -H "Authorization: Bearer changeme123"
-```
-
-**使用访问密钥发送请求：**
-
-```bash
-curl http://localhost:9189/v1/chat/completions \
-  -H "Authorization: Bearer ocp-<你的密钥token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4-5",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'
-```
-
----
-
-### 数据库说明
-
-数据库为 SQLite，路径由 `config.yaml` 中 `database.path` 配置（默认 `./ocp.db`）。
-
-**`upstreams` 表 — 上游提供商**
-
-| 字段 | 说明 |
-|------|------|
-| `id` | 主键 |
-| `name` | 提供商名称（如 `minimax`、`kimi`） |
-| `base_url` | API 基础地址 |
-| `api_key_enc` | 加密存储的 API Key |
-| `enabled` | 是否启用（面板开关控制） |
-| `available` | 运行时健康状态（限速冷却期间为 false） |
-
-```bash
-sqlite3 ocp.db "SELECT id, name, enabled FROM upstreams;"
-```
-
-**`access_keys` 表 — 访问密钥**
-
-| 字段 | 说明 |
-|------|------|
-| `id` | UUID 主键 |
-| `name` | 密钥名称 |
-| `token` | 客户端使用的 Bearer Token（`ocp-...`） |
-| `enabled` | false 表示已封禁 |
-| `token_budget` | 最大 token 用量（0 = 不限） |
-| `tokens_used` | 已消耗 token 数 |
-| `rate_limit_per_min` | 每分钟请求上限（0 = 不限） |
-| `rate_limit_per_day` | 每天请求上限（0 = 不限） |
-| `allowed_upstreams` | 允许使用的上游列表（空 = 全部） |
-| `expires_at` | 过期时间（可为空） |
-
-```bash
-sqlite3 ocp.db "SELECT name, token, enabled, tokens_used FROM access_keys;"
+sqlite3 ocp.db "SELECT upstream_name, SUM(input_tokens+output_tokens) FROM usage_records GROUP BY upstream_name;"
 ```
