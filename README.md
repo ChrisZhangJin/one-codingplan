@@ -4,6 +4,8 @@ ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo an
 
 > Chinese version: [README_zh.md](./README_zh.md)
 
+![Portal](./img/Portal.jpg)
+
 ---
 
 ## Quick Start

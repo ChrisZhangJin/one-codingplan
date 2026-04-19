@@ -2,6 +2,8 @@
 
 ocp 将多个 AI 编程计划的凭证（Minimax、Kimi、Qwen、Mimo 等）聚合在单一兼容 OpenAI 和 Anthropic 的端点后面。将你的工具指向一个 URL、使用一个密钥——ocp 透明地处理路由、故障转移和用量追踪。
 
+![Portal](./img/Portal.jpg)
+
 ---
 
 ## 快速开始
