@@ -70,11 +70,11 @@ All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 
 ### Active (v1.2)
 
-- [ ] OpenAI Responses API endpoint (`/v1/responses`) — accepts Codex CLI requests, translates to `/v1/chat/completions`
-- [ ] Streaming support for `/v1/responses` (Codex uses streaming by default)
-- [ ] Web portal: add new upstream via form (name, base URL, API key, model override)
-- [ ] Web portal: usage statistics page with per-key request and token breakdown
-- [ ] Backend API: usage aggregation endpoint for portal to query
+- [x] OpenAI Responses API endpoint (`/v1/responses`) — accepts Codex CLI requests, translates to `/v1/chat/completions` — Validated in Phase 12
+- [x] Streaming support for `/v1/responses` (Codex uses streaming by default) — Validated in Phase 12
+- [x] Web portal: add new upstream via form (name, base URL, API key, model override) — Validated in Phase 13
+- [x] Web portal: usage statistics page with per-key request and token breakdown — Validated in Phase 13
+- [x] Backend API: usage aggregation endpoint for portal to query — Validated in Phase 13
 
 ### Deferred (v1.3+)
 
@@ -121,4 +121,4 @@ All 11 phases complete (v1.0 + v1.1). The proxy is operational with:
 | Reuse proxyStream/proxyBuffer for Anthropic passthrough | No translation needed — verbatim copy functions already exist | ✓ Good — no new functions needed |
 
 ---
-*Last updated: 2026-04-18 — v1.2 Codex + Portal UX milestone started*
+*Last updated: 2026-04-18 — Phase 13 complete: Portal UX — add upstream form + usage statistics tab live. v1.2 milestone complete.*

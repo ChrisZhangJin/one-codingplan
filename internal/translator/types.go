@@ -1,6 +1,9 @@
 package translator
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // --- Anthropic types ---
 
@@ -116,8 +119,35 @@ type ResponsesRequest struct {
 }
 
 type ResponsesInputMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
+// ContentText extracts the plain text from Content, which may be a JSON string
+// or an array of content parts (e.g. [{"type":"input_text","text":"..."}]).
+func (m *ResponsesInputMessage) ContentText() string {
+	if len(m.Content) == 0 {
+		return ""
+	}
+	// String form: "hello"
+	if m.Content[0] == '"' {
+		var s string
+		if err := json.Unmarshal(m.Content, &s); err == nil {
+			return s
+		}
+	}
+	// Array form: [{"type":"input_text","text":"..."}]
+	if m.Content[0] == '[' {
+		var parts []ResponsesContentPart
+		if err := json.Unmarshal(m.Content, &parts); err == nil {
+			var sb strings.Builder
+			for _, p := range parts {
+				sb.WriteString(p.Text)
+			}
+			return sb.String()
+		}
+	}
+	return ""
 }
 
 type ResponsesResponse struct {

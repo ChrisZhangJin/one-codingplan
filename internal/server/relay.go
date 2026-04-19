@@ -59,7 +59,7 @@ func isHopByHop(header string) bool {
 }
 
 // authMiddleware validates the bearer token against the access_keys table.
-// Rejects with 401 for missing, invalid, or disabled tokens (T-3-01, T-3-02).
+// Rejects with 401 for missing/unknown tokens, 403 for disabled or expired keys.
 func (s *Server) authMiddleware(c *gin.Context) {
 	auth := c.GetHeader("Authorization")
 	token, ok := cutPrefix(auth, "Bearer ")
@@ -68,12 +68,16 @@ func (s *Server) authMiddleware(c *gin.Context) {
 		return
 	}
 	var key models.AccessKey
-	if err := s.db.Where("token = ? AND enabled = ?", token, true).First(&key).Error; err != nil {
+	if err := s.db.Where("token = ?", token).First(&key).Error; err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if !key.Enabled {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "key disabled"})
+		return
+	}
 	if key.ExpiresAt != nil && time.Now().UTC().After(key.ExpiresAt.UTC()) {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "key expired"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "key expired"})
 		return
 	}
 	c.Set("keyID", key.ID)
@@ -179,6 +183,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 		outReq.Header = cloneHeaders(c.Request.Header)
 		outReq.Header.Set("Authorization", "Bearer "+current.APIKey)
 		outReq.Header.Del("Host")
+		pool.GetAdapter(current.Name).InjectHeaders(outReq.Header)
 
 		resp, err := relayClient.Do(outReq)
 		if err != nil {
@@ -212,27 +217,27 @@ func (s *Server) handleRelay(c *gin.Context) {
 		// context remains live for the duration of body reads (streaming or buffered).
 		slog.Info("upstream ok", "name", current.Name, "stream", rb.Stream, "url", outReq.URL.String())
 		if rb.Stream {
-			s.proxyStream(c, resp, cancel, keyID, current.ID, start)
+			s.proxyStream(c, resp, cancel, keyID, current.ID, current.Name, start)
 		} else {
-			s.proxyBuffer(c, resp, cancel, keyID, current.ID, start)
+			s.proxyBuffer(c, resp, cancel, keyID, current.ID, current.Name, start)
 		}
 		return
 	}
 
 	// All upstreams exhausted (D-06)
 	c.JSON(http.StatusServiceUnavailable, errNoUpstream)
-	s.logUsage(keyID, 0, false, 0, 0, time.Since(start))
+	s.logUsage(keyID, 0, "", false, 0, 0, time.Since(start))
 }
 
 // proxyBuffer reads the upstream response body, forwards headers and status,
 // and writes the body to the client. Extracts token counts for usage logging (D-08, D-13).
-func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time) {
+func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, upstreamName string, start time.Time) {
 	defer cancel()
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
-		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		s.logUsage(keyID, upstreamID, upstreamName, false, 0, 0, time.Since(start))
 		return
 	}
 
@@ -260,15 +265,16 @@ func (s *Server) proxyBuffer(c *gin.Context, resp *http.Response, cancel context
 	if outTokens == 0 {
 		outTokens = cr.Usage.OutputTokens
 	}
-	s.logUsage(keyID, upstreamID, true, inTokens, outTokens, time.Since(start))
+	s.logUsage(keyID, upstreamID, upstreamName, true, inTokens, outTokens, time.Since(start))
 }
 
 // logUsage enqueues a UsageRecord for serial write by the usageWriter goroutine.
-func (s *Server) logUsage(keyID string, upstreamID uint, success bool, in, out int, latency time.Duration) {
+func (s *Server) logUsage(keyID string, upstreamID uint, upstreamName string, success bool, in, out int, latency time.Duration) {
 	select {
 	case s.usageCh <- models.UsageRecord{
 		KeyID:        keyID,
 		UpstreamID:   upstreamID,
+		UpstreamName: upstreamName,
 		InputTokens:  in,
 		OutputTokens: out,
 		LatencyMs:    latency.Milliseconds(),
@@ -280,7 +286,7 @@ func (s *Server) logUsage(keyID string, upstreamID uint, success bool, in, out i
 
 // proxyStream copies an SSE upstream response to the client with per-chunk flushing,
 // a heartbeat goroutine, and async usage logging on completion.
-func (s *Server) proxyStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time) {
+func (s *Server) proxyStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, upstreamName string, start time.Time) {
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -293,7 +299,7 @@ func (s *Server) proxyStream(c *gin.Context, resp *http.Response, cancel context
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		s.logUsage(keyID, upstreamID, upstreamName, false, 0, 0, time.Since(start))
 		return
 	}
 
@@ -338,5 +344,5 @@ func (s *Server) proxyStream(c *gin.Context, resp *http.Response, cancel context
 	}
 
 	// Log usage after stream completes; token counts are 0 for streaming per D-13 fallback
-	s.logUsage(keyID, upstreamID, true, 0, 0, time.Since(start))
+	s.logUsage(keyID, upstreamID, upstreamName, true, 0, 0, time.Since(start))
 }

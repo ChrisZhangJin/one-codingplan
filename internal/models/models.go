@@ -17,6 +17,7 @@ type Upstream struct {
 	ModelOverride string `gorm:"column:model_override;default:''"`
 }
 
+
 // DecryptAPIKey returns the plaintext API key using the provided AES key.
 func (u *Upstream) DecryptAPIKey(encKey []byte) (string, error) {
 	if len(u.APIKeyEnc) == 0 {
@@ -42,9 +43,10 @@ type AccessKey struct {
 
 type UsageRecord struct {
 	ID           uint      `gorm:"primarykey;autoIncrement"`
-	CreatedAt    time.Time
-	KeyID        string `gorm:"index;not null"`
-	UpstreamID   uint   `gorm:"index;not null"`
+	CreatedAt    time.Time `gorm:"index"`
+	KeyID        string    `gorm:"index;not null"`
+	UpstreamID   uint      `gorm:"index;not null"`
+	UpstreamName string    `gorm:"not null;default:''"`
 	InputTokens  int
 	OutputTokens int
 	LatencyMs    int64

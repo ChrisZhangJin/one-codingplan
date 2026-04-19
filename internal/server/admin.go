@@ -169,7 +169,7 @@ func (s *Server) handleListKeys(c *gin.Context) {
 
 	resp := make([]keyResponse, len(keys))
 	for i, k := range keys {
-		resp[i] = s.toKeyResponse(k, false)
+		resp[i] = s.toKeyResponse(k, true)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -181,7 +181,7 @@ func (s *Server) handleGetKey(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "key not found"})
 		return
 	}
-	c.JSON(http.StatusOK, s.toKeyResponse(key, false))
+	c.JSON(http.StatusOK, s.toKeyResponse(key, true))
 }
 
 func (s *Server) handleUpdateKey(c *gin.Context) {

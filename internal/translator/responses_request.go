@@ -3,6 +3,7 @@ package translator
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 var ErrStringInput = errors.New("input must be an array, not a string")
@@ -50,15 +51,38 @@ func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessag
 	}
 
 	for _, m := range msgs {
+		content := m.ContentText()
+		if content == "" {
+			continue
+		}
+		role := m.Role
+		switch role {
+		case "", "developer":
+			role = "system"
+		}
 		messages = append(messages, OpenAIMessage{
-			Role:    m.Role,
-			Content: m.Content,
+			Role:    role,
+			Content: content,
 		})
 	}
 
 	return OpenAIRequest{
 		Model:    model,
-		Messages: messages,
+		Messages: mergeSystemMessages(messages),
 		Stream:   req.Stream,
 	}
+}
+
+// mergeSystemMessages collapses consecutive system messages into one,
+// joining their content with newlines. Providers like Minimax reject multiple system messages.
+func mergeSystemMessages(msgs []OpenAIMessage) []OpenAIMessage {
+	var out []OpenAIMessage
+	for _, m := range msgs {
+		if m.Role == "system" && len(out) > 0 && out[len(out)-1].Role == "system" {
+			out[len(out)-1].Content = strings.Join([]string{out[len(out)-1].Content, m.Content}, "\n\n")
+		} else {
+			out = append(out, m)
+		}
+	}
+	return out
 }

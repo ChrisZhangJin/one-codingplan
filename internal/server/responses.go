@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"one-codingplan/internal/logging"
 	"one-codingplan/internal/models"
 	"one-codingplan/internal/pool"
 	"one-codingplan/internal/translator"
@@ -68,20 +69,26 @@ func (s *Server) handleResponsesRelay(c *gin.Context) {
 	allowedUpstreams := parseAllowedUpstreams(accessKey.AllowedUpstreams)
 	start := time.Now()
 
+	slog.Debug("responses handler invoked", "model", req.Model, "stream", req.Stream, "key_id", keyID)
+
 	seen := make(map[uint]bool)
 
 	for {
 		up, err := s.pool.Select(allowedUpstreams)
 		if errors.Is(err, pool.ErrNoUpstreams) {
+			slog.Debug("responses no upstream available", "seen", len(seen))
 			break
 		}
 		if err != nil {
+			slog.Debug("responses pool select error", "err", err, "seen", len(seen))
 			break
 		}
 		if seen[up.ID] {
+			slog.Debug("responses all upstreams exhausted", "upstream", up.Name, "seen", len(seen))
 			break
 		}
 		seen[up.ID] = true
+		slog.Debug("responses upstream selected", "name", up.Name, "id", up.ID)
 
 		modelOverride := ""
 		if up.ModelOverride != "" {
@@ -105,8 +112,10 @@ func (s *Server) handleResponsesRelay(c *gin.Context) {
 		outReq.Header.Set("Authorization", "Bearer "+up.APIKey)
 		outReq.Header.Set("Content-Type", "application/json")
 		outReq.Header.Del("Host")
+		pool.GetAdapter(up.Name).InjectHeaders(outReq.Header)
 		slog.Debug("responses upstream request", "name", up.Name, "url", outReq.URL.String(),
 			"model_override", up.ModelOverride)
+		slog.Log(nil, logging.LevelVerbose, "responses upstream body", "body", string(sendBody))
 
 		resp, reqErr := relayClient.Do(outReq)
 		if reqErr != nil {
@@ -139,44 +148,44 @@ func (s *Server) handleResponsesRelay(c *gin.Context) {
 
 		slog.Info("responses upstream ok", "name", up.Name, "stream", req.Stream, "url", outReq.URL.String())
 		if req.Stream {
-			s.proxyResponsesStream(c, resp, cancel, keyID, up.ID, start, req.Model)
+			s.proxyResponsesStream(c, resp, cancel, keyID, up.ID, up.Name, start, req.Model)
 		} else {
-			s.proxyResponsesBuffer(c, resp, cancel, keyID, up.ID, start, req.Model)
+			s.proxyResponsesBuffer(c, resp, cancel, keyID, up.ID, up.Name, start, req.Model)
 		}
 		return
 	}
 
 	c.JSON(http.StatusServiceUnavailable, responsesErrNoUpstream)
-	s.logUsage(keyID, 0, false, 0, 0, time.Since(start))
+	s.logUsage(keyID, 0, "", false, 0, 0, time.Since(start))
 }
 
 // proxyResponsesBuffer reads the full upstream response, translates it to Responses API format,
 // and returns it as JSON.
-func (s *Server) proxyResponsesBuffer(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time, requestModel string) {
+func (s *Server) proxyResponsesBuffer(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, upstreamName string, start time.Time, requestModel string) {
 	defer cancel()
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		c.JSON(http.StatusBadGateway, responsesError("server_error", "failed to read upstream response"))
-		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		s.logUsage(keyID, upstreamID, upstreamName, false, 0, 0, time.Since(start))
 		return
 	}
 
 	var openAIResp translator.OpenAIResponse
 	if err := json.Unmarshal(body, &openAIResp); err != nil {
 		c.JSON(http.StatusBadGateway, responsesError("server_error", "failed to parse upstream response"))
-		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		s.logUsage(keyID, upstreamID, upstreamName, false, 0, 0, time.Since(start))
 		return
 	}
 
 	responsesResp := translator.OpenAIToResponsesAPI(&openAIResp, requestModel)
 	c.JSON(http.StatusOK, responsesResp)
-	s.logUsage(keyID, upstreamID, true, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Since(start))
+	s.logUsage(keyID, upstreamID, upstreamName, true, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Since(start))
 }
 
 // proxyResponsesStream streams the upstream response, translating OpenAI SSE chunks to
 // Responses API SSE events.
-func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, start time.Time, model string) {
+func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, upstreamName string, start time.Time, model string) {
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -188,7 +197,7 @@ func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cance
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		s.logUsage(keyID, upstreamID, false, 0, 0, time.Since(start))
+		s.logUsage(keyID, upstreamID, upstreamName, false, 0, 0, time.Since(start))
 		return
 	}
 
@@ -221,9 +230,13 @@ func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cance
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			slog.Log(nil, logging.LevelVerbose, "responses stream chunk", "raw", string(buf[:n]))
 			events, translateErr := tr.Translate(buf[:n])
-			if translateErr == nil {
+			if translateErr != nil {
+				slog.Debug("responses stream translate error", "err", translateErr)
+			} else {
 				for _, ev := range events {
+					slog.Log(nil, logging.LevelVerbose, "responses stream event", "event", string(ev))
 					writeAndFlush(ev)
 				}
 			}
@@ -233,5 +246,5 @@ func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cance
 		}
 	}
 
-	s.logUsage(keyID, upstreamID, true, 0, 0, time.Since(start))
+	s.logUsage(keyID, upstreamID, upstreamName, true, 0, 0, time.Since(start))
 }

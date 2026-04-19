@@ -59,8 +59,8 @@ func (t *ResponsesStreamTranslator) translateFrame(frame []byte) ([][]byte, erro
 	line := bytes.TrimSpace(frame)
 	for _, l := range bytes.Split(line, []byte("\n")) {
 		l = bytes.TrimSpace(l)
-		if bytes.HasPrefix(l, []byte("data: ")) {
-			line = l[6:]
+		if bytes.HasPrefix(l, []byte("data:")) {
+			line = bytes.TrimSpace(l[5:])
 			break
 		}
 	}

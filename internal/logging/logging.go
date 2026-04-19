@@ -119,8 +119,13 @@ func (h *ocpHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *ocpHandler) WithGroup(_ string) slog.Handler { return h }
 
+// LevelVerbose is below DEBUG — for high-volume trace logs (e.g. raw stream chunks).
+const LevelVerbose = slog.LevelDebug - 4
+
 func parseLevel(s string) slog.Level {
 	switch strings.ToLower(s) {
+	case "verbose":
+		return LevelVerbose
 	case "debug":
 		return slog.LevelDebug
 	case "warn", "warning":

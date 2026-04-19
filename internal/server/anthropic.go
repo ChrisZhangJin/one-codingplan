@@ -95,6 +95,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		outReq.Header.Set("x-api-key", up.APIKey)
 		outReq.Header.Set("Content-Type", "application/json")
 		outReq.Header.Del("Host")
+		pool.GetAdapter(up.Name).InjectHeaders(outReq.Header)
 		slog.Debug("upstream request", "name", up.Name, "url", outReq.URL.String(),
 			"model_override", up.ModelOverride, "key_prefix", up.APIKey[:min(8, len(up.APIKey))],
 			"body", string(sendBody))
@@ -130,14 +131,14 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		// Success path — passthrough
 		slog.Info("upstream ok", "name", up.Name, "stream", req.Stream, "url", outReq.URL.String())
 		if req.Stream {
-			s.proxyStream(c, resp, cancel, keyID, up.ID, start)
+			s.proxyStream(c, resp, cancel, keyID, up.ID, up.Name, start)
 		} else {
-			s.proxyBuffer(c, resp, cancel, keyID, up.ID, start)
+			s.proxyBuffer(c, resp, cancel, keyID, up.ID, up.Name, start)
 		}
 		return
 	}
 
 	// All upstreams exhausted
 	c.JSON(http.StatusServiceUnavailable, anthropicErrNoUpstream)
-	s.logUsage(keyID, 0, false, 0, 0, time.Since(start))
+	s.logUsage(keyID, 0, "", false, 0, 0, time.Since(start))
 }

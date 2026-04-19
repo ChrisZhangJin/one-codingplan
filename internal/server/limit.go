@@ -52,6 +52,18 @@ func checkRate(counters *sync.Map, keyID string, limit int, currentWindow int) b
 	return true
 }
 
+func incrementCounter(counters *sync.Map, keyID string, currentWindow int) {
+	val, _ := counters.LoadOrStore(keyID, &rateCounter{})
+	rc := val.(*rateCounter)
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if rc.windowID != currentWindow {
+		rc.count = 0
+		rc.windowID = currentWindow
+	}
+	rc.count++
+}
+
 func currentDayCount(keyID string) int {
 	val, ok := perDayCounters.Load(keyID)
 	if !ok {
@@ -118,9 +130,9 @@ func (s *Server) limitMiddleware(c *gin.Context) {
 		}
 	}
 
-	// Per-day rate limit (D-08)
+	// Per-day counter — always increment for Today display; enforce limit if set (D-08)
+	dayWindow := time.Now().UTC().YearDay()
 	if key.RateLimitPerDay > 0 {
-		dayWindow := time.Now().UTC().YearDay()
 		if !checkRate(&perDayCounters, key.ID, key.RateLimitPerDay, dayWindow) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": gin.H{
@@ -131,6 +143,8 @@ func (s *Server) limitMiddleware(c *gin.Context) {
 			})
 			return
 		}
+	} else {
+		incrementCounter(&perDayCounters, key.ID, dayWindow)
 	}
 
 	c.Next()

@@ -55,8 +55,8 @@ func (st *StreamTranslator) translateFrame(frame []byte) ([][]byte, error) {
 	// Handle multi-line frames: find the "data: " line.
 	for _, l := range bytes.Split(line, []byte("\n")) {
 		l = bytes.TrimSpace(l)
-		if bytes.HasPrefix(l, []byte("data: ")) {
-			line = l[6:] // strip "data: "
+		if bytes.HasPrefix(l, []byte("data:")) {
+			line = bytes.TrimSpace(l[5:])
 			break
 		}
 	}
