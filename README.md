@@ -1,10 +1,61 @@
 # one-codingplan (ocp)
 
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://golang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-ChrisZhangJin%2Fone--codingplan-181717?logo=github)](https://github.com/ChrisZhangJin/one-codingplan)
+
 ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo and others) behind a single OpenAI-compatible and Anthropic-compatible endpoint. Point your tools at one URL with one key — ocp handles routing, failover, and credit tracking transparently.
 
 > Chinese version: [README_zh.md](./README_zh.md)
 
 ![Portal](./img/Portal.jpg)
+
+---
+
+## Supported Providers
+
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| Minimax | `https://api.minimaxi.com` | Model: `MiniMax-M2.5` |
+| Mimo | `https://token-plan-cn.xiaomimimo.com` | Model: `mimo-v2-pro` |
+| Kimi | `https://api.kimi.com/coding` | Requires `User-Agent: claude-code/1.0.0` |
+| Qwen | `https://dashscope.aliyuncs.com` | Alibaba Cloud |
+| DeepSeek | `https://api.deepseek.com` | Model: `deepseek-chat` |
+| GLM | `https://open.bigmodel.cn` | Zhipu AI |
+
+All providers are managed via the portal — no code changes needed to add or switch providers.
+
+---
+
+## Use with Claude Code / Codex
+
+Point any OpenAI-compatible tool at ocp by setting two environment variables:
+
+**Claude Code:**
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:9189
+export ANTHROPIC_API_KEY=ocp-<your-key>
+claude
+```
+
+**Codex CLI:**
+```bash
+export OPENAI_BASE_URL=http://localhost:9189/v1
+export OPENAI_API_KEY=ocp-<your-key>
+codex
+```
+
+**Any OpenAI SDK client:**
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:9189/v1",
+    api_key="ocp-<your-key>",
+)
+```
+
+ocp will automatically route to the next available provider if the current one runs out of credits or hits a rate limit.
 
 ---
 
@@ -216,3 +267,9 @@ sqlite3 ocp.db "SELECT name, token, enabled FROM access_keys;"
 ```bash
 sqlite3 ocp.db "SELECT upstream_name, SUM(input_tokens+output_tokens) FROM usage_records GROUP BY upstream_name;"
 ```
+
+---
+
+## License
+
+MIT © 2026 Chris Zhang — see [LICENSE](./LICENSE)
