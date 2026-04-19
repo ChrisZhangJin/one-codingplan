@@ -1,0 +1,13 @@
+server:
+  port: 8080
+  admin_key: "change-me"
+
+database:
+  path: "/data/ocp.db"
+
+pool:
+  rate_limit_backoff: "5s"
+
+logging:
+  level: "info"
+

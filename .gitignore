@@ -1,0 +1,10 @@
+ocp.db
+config.yaml
+*.exe
+/ocp
+/dist/
+web/node_modules/
+web/dist/
+internal/server/web_dist/*
+!internal/server/web_dist/.gitkeep
+.planning

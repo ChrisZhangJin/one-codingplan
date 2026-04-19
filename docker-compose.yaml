@@ -1,0 +1,34 @@
+services:
+  ocp:
+    image: one-codingplan:latest
+    container_name: ocp-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      OCP_ENCRYPTION_KEY: ${OCP_ENCRYPTION_KEY}
+    command: ["serve", "--config", "/app/config.yaml"]
+
+  ocp-cli:
+    image: one-codingplan:latest
+    container_name: ocp-cli
+    profiles:
+      - cli
+    depends_on:
+      - ocp
+    environment:
+      OCP_HOST: ${OCP_HOST:-http://ocp:8080}
+      OCP_ADMIN_KEY: ${OCP_ADMIN_KEY}
+    networks:
+      - default
+    entrypoint: ["ocp"]
+    command: ["--help"]
+    stdin_open: true
+    tty: true
+
+networks:
+  default:
+    name: ocp-network
