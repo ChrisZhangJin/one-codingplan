@@ -17,7 +17,7 @@ import (
 	"one-codingplan/internal/pool"
 )
 
-var relayClient = &http.Client{Timeout: 30 * time.Second}
+var relayClient = &http.Client{Timeout: 300 * time.Second}
 
 // HeartbeatInterval controls how often a `: heartbeat` SSE comment is sent on idle streams.
 // Exported so tests can override it.

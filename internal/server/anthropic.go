@@ -17,6 +17,25 @@ import (
 	"one-codingplan/internal/translator"
 )
 
+// anthropicExtensionFields are fields in the Anthropic Messages API that are
+// Claude-specific and not understood by third-party Anthropic-compatible upstreams.
+// Forwarding them causes undefined behavior (e.g. Kimi never terminates its SSE stream
+// when it receives "thinking").
+var anthropicExtensionFields = []string{"thinking", "betas"}
+
+// stripAnthropicExtensions removes Claude-specific fields from a raw Anthropic
+// request body before forwarding to third-party upstreams.
+func stripAnthropicExtensions(body []byte) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	for _, field := range anthropicExtensionFields {
+		delete(m, field)
+	}
+	return json.Marshal(m)
+}
+
 var anthropicErrNoUpstream = gin.H{
 	"type": "error",
 	"error": gin.H{
@@ -60,6 +79,14 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 	allowedUpstreams := parseAllowedUpstreams(accessKey.AllowedUpstreams)
 	start := time.Now()
 
+	// Strip Claude-specific fields that third-party upstreams (Kimi, Minimax, GLM, etc.)
+	// do not understand. Sending them causes unpredictable behavior — Kimi in particular
+	// never terminates the SSE stream when it receives "thinking".
+	sanitizedBody, err := stripAnthropicExtensions(bodyBytes)
+	if err != nil {
+		sanitizedBody = bodyBytes // fall back to original if stripping fails
+	}
+
 	seen := make(map[uint]bool)
 
 	for {
@@ -75,14 +102,14 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 		seen[up.ID] = true
 
-		sendBody := bodyBytes
+		sendBody := sanitizedBody
 		if up.ModelOverride != "" {
-			if rewritten, err := rewriteModel(bodyBytes, up.ModelOverride); err == nil {
+			if rewritten, err := rewriteModel(sanitizedBody, up.ModelOverride); err == nil {
 				sendBody = rewritten
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 300*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			pool.GetAdapter(up.Name).AnthropicURL(up.BaseURL),
 			bytes.NewReader(sendBody))
