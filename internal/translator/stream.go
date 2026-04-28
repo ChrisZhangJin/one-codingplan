@@ -39,11 +39,23 @@ func (st *StreamTranslator) Translate(chunk []byte) ([][]byte, error) {
 	return events, nil
 }
 
+// openAIToolCallDelta is a single tool call entry within a streaming delta.
+type openAIToolCallDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
 // openAIStreamChunk is the minimal shape of an OpenAI streaming chunk.
 type openAIStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content   string                `json:"content"`
+			ToolCalls []openAIToolCallDelta `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`

@@ -35,6 +35,7 @@ func ParseResponsesInput(raw json.RawMessage) ([]ResponsesInputMessage, error) {
 // ResponsesRequestToOpenAI translates a parsed Responses API request to an OpenAI chat completions request.
 // If modelOverride is non-empty, it replaces the model field.
 // The instructions field is prepended as a system message (per D-03).
+// Function-type tools are forwarded; built-in tool types are silently dropped.
 func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessage, modelOverride string) OpenAIRequest {
 	model := req.Model
 	if modelOverride != "" {
@@ -51,26 +52,123 @@ func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessag
 	}
 
 	for _, m := range msgs {
-		content := m.ContentText()
-		if content == "" {
-			continue
+		messages = append(messages, convertResponsesItem(m)...)
+	}
+
+	var tools []OpenAITool
+	for _, t := range req.Tools {
+		if t.Type == "function" {
+			tools = append(tools, OpenAITool{
+				Type: "function",
+				Function: OpenAIFunction{
+					Name:        t.Name,
+					Description: t.Description,
+					Parameters:  t.Parameters,
+				},
+			})
 		}
-		role := m.Role
-		switch role {
-		case "", "developer":
-			role = "system"
-		}
-		messages = append(messages, OpenAIMessage{
-			Role:    role,
-			Content: content,
-		})
+		// Skip non-function built-in tools (computer_use_preview, web_search_preview, etc.)
 	}
 
 	return OpenAIRequest{
 		Model:    model,
 		Messages: mergeSystemMessages(messages),
 		Stream:   req.Stream,
+		Tools:    tools,
 	}
+}
+
+// convertResponsesItem converts a single Responses API input item to one or more OpenAI messages.
+// Items may be role-based messages (user/assistant/system) or typed items
+// (function_call for assistant tool calls, function_call_output for tool results).
+func convertResponsesItem(m ResponsesInputMessage) []OpenAIMessage {
+	switch m.Type {
+	case "function_call":
+		// Assistant's tool call stored in conversation history
+		return []OpenAIMessage{{
+			Role: "assistant",
+			ToolCalls: []OpenAIToolCall{{
+				ID:   m.ID,
+				Type: "function",
+				Function: OpenAIFunctionCall{
+					Name:      m.Name,
+					Arguments: m.Arguments,
+				},
+			}},
+		}}
+	case "function_call_output":
+		// Tool execution result
+		return []OpenAIMessage{{
+			Role:       "tool",
+			ToolCallID: m.CallID,
+			Content:    m.Output,
+		}}
+	}
+
+	// Role-based message
+	role := m.Role
+	switch role {
+	case "", "developer":
+		role = "system"
+	}
+
+	if len(m.Content) == 0 {
+		return nil
+	}
+
+	// String content: "hello world"
+	if m.Content[0] == '"' {
+		var s string
+		if err := json.Unmarshal(m.Content, &s); err == nil && s != "" {
+			return []OpenAIMessage{{Role: role, Content: s}}
+		}
+	}
+
+	// Array content: may be plain text parts or tool_result parts
+	if m.Content[0] == '[' {
+		var parts []ResponsesContentPart
+		if err := json.Unmarshal(m.Content, &parts); err == nil {
+			return convertContentParts(role, parts)
+		}
+	}
+
+	return nil
+}
+
+// convertContentParts converts an array of content parts to OpenAI messages.
+// tool_result parts become separate "tool" role messages; text parts are merged
+// into a single message under the original role.
+func convertContentParts(role string, parts []ResponsesContentPart) []OpenAIMessage {
+	var msgs []OpenAIMessage
+	var textBuf []string
+
+	flushText := func() {
+		if len(textBuf) > 0 {
+			msgs = append(msgs, OpenAIMessage{Role: role, Content: strings.Join(textBuf, "")})
+			textBuf = nil
+		}
+	}
+
+	for _, p := range parts {
+		switch p.Type {
+		case "tool_result":
+			flushText()
+			callID := p.ToolUseID
+			if callID == "" {
+				callID = p.CallID
+			}
+			msgs = append(msgs, OpenAIMessage{
+				Role:       "tool",
+				ToolCallID: callID,
+				Content:    p.ContentText(),
+			})
+		case "input_text", "text", "output_text":
+			textBuf = append(textBuf, p.Text)
+		}
+	}
+	flushText()
+
+	return msgs
 }
 
 // mergeSystemMessages collapses consecutive system messages into one,

@@ -116,11 +116,31 @@ type ResponsesRequest struct {
 	Input        json.RawMessage `json:"input"`
 	Instructions string          `json:"instructions,omitempty"`
 	Stream       bool            `json:"stream,omitempty"`
+	Tools        []ResponsesTool `json:"tools,omitempty"`
 }
 
+// ResponsesTool is a tool definition in Responses API format (flat, not nested like chat completions).
+// Only "function" type tools are forwarded to upstreams; built-in types are silently dropped.
+type ResponsesTool struct {
+	Type        string          `json:"type"`
+	Name        string          `json:"name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+// ResponsesInputMessage represents a single item in the Responses API input array.
+// Items can be role-based messages OR typed items (function_call, function_call_output).
 type ResponsesInputMessage struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	// Role-based message fields
+	Role    string          `json:"role,omitempty"`
+	Content json.RawMessage `json:"content,omitempty"`
+	// function_call / function_call_output item fields
+	Type      string `json:"type,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	CallID    string `json:"call_id,omitempty"`
+	Output    string `json:"output,omitempty"`
 }
 
 // ContentText extracts the plain text from Content, which may be a JSON string
@@ -162,16 +182,49 @@ type ResponsesResponse struct {
 
 type ResponsesOutput struct {
 	Type    string                 `json:"type"`
-	ID      string                 `json:"id"`
-	Status  string                 `json:"status"`
-	Role    string                 `json:"role"`
-	Content []ResponsesContentPart `json:"content"`
+	ID      string                 `json:"id,omitempty"`
+	Status  string                 `json:"status,omitempty"`
+	// For "message" type
+	Role    string                 `json:"role,omitempty"`
+	Content []ResponsesContentPart `json:"content,omitempty"`
+	// For "function_call" type
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 type ResponsesContentPart struct {
-	Type        string   `json:"type"`
-	Text        string   `json:"text"`
-	Annotations []string `json:"annotations,omitempty"`
+	Type        string          `json:"type"`
+	Text        string          `json:"text,omitempty"`
+	// For tool_result input parts
+	ToolUseID   string          `json:"tool_use_id,omitempty"`
+	CallID      string          `json:"call_id,omitempty"`
+	Content     json.RawMessage `json:"content,omitempty"`
+	Annotations []string        `json:"annotations,omitempty"`
+}
+
+// ContentText extracts plain text from a ResponsesContentPart, used for tool_result content
+// which may be a JSON string or array of text parts.
+func (p *ResponsesContentPart) ContentText() string {
+	if len(p.Content) == 0 {
+		return p.Text
+	}
+	if p.Content[0] == '"' {
+		var s string
+		if err := json.Unmarshal(p.Content, &s); err == nil {
+			return s
+		}
+	}
+	if p.Content[0] == '[' {
+		var parts []ResponsesContentPart
+		if err := json.Unmarshal(p.Content, &parts); err == nil {
+			var sb strings.Builder
+			for _, part := range parts {
+				sb.WriteString(part.Text)
+			}
+			return sb.String()
+		}
+	}
+	return p.Text
 }
 
 type ResponsesUsage struct {
