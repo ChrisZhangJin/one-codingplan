@@ -11,3 +11,9 @@ pool:
 logging:
   level: "info"
 
+# Add upstreams below. Example:
+# upstreams:
+#   - name: kimi
+#     base_url: https://api.moonshot.ai
+#     api_key: "sk-your-kimi-key"
+#     enabled: true

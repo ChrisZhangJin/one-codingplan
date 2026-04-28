@@ -243,6 +243,86 @@ func TestResponsesStream_EmptyChoices(t *testing.T) {
 	}
 }
 
+func TestResponsesStream_ToolCallDelta(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+
+	// First chunk: tool call starts with id and name
+	chunk1 := []byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}` + "\n\n")
+	events1, err := tr.Translate(chunk1)
+	if err != nil {
+		t.Fatalf("unexpected error on chunk1: %v", err)
+	}
+	parsed1 := parseSSEEvents(t, events1)
+	types1 := eventTypes(parsed1)
+	if len(types1) != 1 || types1[0] != "response.output_item.added" {
+		t.Fatalf("expected [response.output_item.added], got %v", types1)
+	}
+
+	// Second chunk: argument delta
+	chunk2 := []byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":"}}]},"finish_reason":null}]}` + "\n\n")
+	events2, err := tr.Translate(chunk2)
+	if err != nil {
+		t.Fatalf("unexpected error on chunk2: %v", err)
+	}
+	parsed2 := parseSSEEvents(t, events2)
+	types2 := eventTypes(parsed2)
+	if len(types2) != 1 || types2[0] != "response.function_call_arguments.delta" {
+		t.Fatalf("expected [response.function_call_arguments.delta], got %v", types2)
+	}
+
+	// Third chunk: finish_reason=tool_calls
+	chunk3 := []byte(`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}` + "\n\n")
+	events3, err := tr.Translate(chunk3)
+	if err != nil {
+		t.Fatalf("unexpected error on chunk3: %v", err)
+	}
+	parsed3 := parseSSEEvents(t, events3)
+	types3 := eventTypes(parsed3)
+	wantTypes3 := []string{
+		"response.function_call_arguments.done",
+		"response.output_item.done",
+		"response.completed",
+	}
+	if len(types3) != len(wantTypes3) {
+		t.Fatalf("expected %v, got %v", wantTypes3, types3)
+	}
+	for i, want := range wantTypes3 {
+		if types3[i] != want {
+			t.Errorf("event[%d]: want %q, got %q", i, want, types3[i])
+		}
+	}
+
+	// response.completed output must be function_call type
+	completedEv := parsed3[2]
+	resp, ok := completedEv["response"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected response object in response.completed")
+	}
+	output, ok := resp["output"].([]interface{})
+	if !ok || len(output) == 0 {
+		t.Fatalf("expected non-empty output in response.completed")
+	}
+	outItem, ok := output[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected output[0] to be a map")
+	}
+	if outItem["type"] != "function_call" {
+		t.Errorf("expected output type=function_call, got %v", outItem["type"])
+	}
+	if outItem["name"] != "bash" {
+		t.Errorf("expected name=bash, got %v", outItem["name"])
+	}
+
+	// Sequence numbers must be strictly increasing across all chunks
+	allParsed := append(append(parsed1, parsed2...), parsed3...)
+	for i := 1; i < len(allParsed); i++ {
+		if seqNum(allParsed[i]) <= seqNum(allParsed[i-1]) {
+			t.Errorf("sequence_number not monotonically increasing at index %d: %d <= %d",
+				i, seqNum(allParsed[i]), seqNum(allParsed[i-1]))
+		}
+	}
+}
+
 func TestResponsesStream_SequenceOrderAfterFull(t *testing.T) {
 	tr := NewResponsesStreamTranslator("gpt-4")
 

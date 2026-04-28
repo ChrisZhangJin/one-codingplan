@@ -100,7 +100,7 @@ func (s *Server) handleResponsesRelay(c *gin.Context) {
 			continue
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 300*time.Second)
 		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			pool.GetAdapter(up.Name).OpenAIURL(up.BaseURL),
 			bytes.NewReader(sendBody))
@@ -184,7 +184,7 @@ func (s *Server) proxyResponsesBuffer(c *gin.Context, resp *http.Response, cance
 }
 
 // proxyResponsesStream streams the upstream response, translating OpenAI SSE chunks to
-// Responses API SSE events.
+// Responses API SSE events. Token counts are extracted from the final SSE chunk's usage field.
 func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cancel context.CancelFunc, keyID string, upstreamID uint, upstreamName string, start time.Time, model string) {
 	defer cancel()
 	defer resp.Body.Close()
@@ -227,9 +227,46 @@ func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cance
 
 	tr := translator.NewResponsesStreamTranslator(model)
 	buf := make([]byte, 4096)
+	var inTokens, outTokens int
+
+	// openAIStreamChunk mirrors the shape used by translator/stream.go
+	type openAIStreamChunk struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+			FinishReason *string `json:"finish_reason"`
+			Usage        struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		} `json:"choices"`
+	}
+
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			// Try to extract token counts from this chunk's usage field.
+			// The final chunk (before [DONE]) contains the complete usage.
+			raw := bytes.TrimSpace(buf[:n])
+			for _, line := range bytes.Split(raw, []byte("\n")) {
+				line = bytes.TrimSpace(line)
+				if !bytes.HasPrefix(line, []byte("data:")) {
+					continue
+				}
+				line = bytes.TrimSpace(line[5:])
+				if bytes.Equal(line, []byte("[DONE]")) {
+					continue
+				}
+				var chunk openAIStreamChunk
+				if json.Unmarshal(line, &chunk) == nil && len(chunk.Choices) > 0 {
+					if u := chunk.Choices[0].Usage; u.PromptTokens > 0 || u.CompletionTokens > 0 {
+						inTokens = u.PromptTokens
+						outTokens = u.CompletionTokens
+					}
+				}
+			}
+
 			slog.Log(nil, logging.LevelVerbose, "responses stream chunk", "raw", string(buf[:n]))
 			events, translateErr := tr.Translate(buf[:n])
 			if translateErr != nil {
@@ -246,5 +283,5 @@ func (s *Server) proxyResponsesStream(c *gin.Context, resp *http.Response, cance
 		}
 	}
 
-	s.logUsage(keyID, upstreamID, upstreamName, true, 0, 0, time.Since(start))
+	s.logUsage(keyID, upstreamID, upstreamName, true, inTokens, outTokens, time.Since(start))
 }
