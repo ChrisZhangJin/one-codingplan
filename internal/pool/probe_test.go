@@ -272,3 +272,88 @@ func TestSendProbe_RequestFormat(t *testing.T) {
 		t.Errorf("messages content = %v, want [{role:user content:hi}]", capturedBody.Messages)
 	}
 }
+
+func TestProbe_AnthropicUsesMessagesPath(t *testing.T) {
+	var capturedPath, capturedAPIKey, capturedVersion string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedAPIKey = r.Header.Get("x-api-key")
+		capturedVersion = r.Header.Get("anthropic-version")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"content":[{"type":"text","text":"hi"}],"role":"assistant","model":"claude"}`)
+	}))
+	defer srv.Close()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("database.Open: %v", err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("database.Migrate: %v", err)
+	}
+	enc, err := crypto.Encrypt(testEncKey, "sk-test")
+	if err != nil {
+		t.Fatalf("crypto.Encrypt: %v", err)
+	}
+	if err := db.Create(&models.Upstream{
+		Name: "my-claude", BaseURL: srv.URL, APIKeyEnc: enc, Enabled: true,
+		Protocol: models.ProtocolAnthropic,
+	}).Error; err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	p, err := pool.New(db, testEncKey, &pool.Config{RateLimitBackoff: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("pool.New: %v", err)
+	}
+	defer p.Stop()
+
+	id := findID(t, p, "my-claude")
+	p.Mark(id, false)
+	p.ProbeAll()
+
+	if capturedPath != "/v1/messages" {
+		t.Errorf("probe hit %q, want /v1/messages", capturedPath)
+	}
+	if capturedAPIKey != "sk-test" {
+		t.Errorf("x-api-key = %q, want sk-test", capturedAPIKey)
+	}
+	if capturedVersion != "2023-06-01" {
+		t.Errorf("anthropic-version = %q, want 2023-06-01", capturedVersion)
+	}
+
+	// And it should now be available.
+	if _, err := p.Select(nil, models.ProtocolAnthropic); err != nil {
+		t.Errorf("upstream should be available after successful probe: %v", err)
+	}
+}
+
+func TestProbe_AnthropicFailureKeepsUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("database.Open: %v", err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("database.Migrate: %v", err)
+	}
+	enc, _ := crypto.Encrypt(testEncKey, "sk-test")
+	db.Create(&models.Upstream{
+		Name: "my-claude", BaseURL: srv.URL, APIKeyEnc: enc, Enabled: true,
+		Protocol: models.ProtocolAnthropic,
+	})
+	p, _ := pool.New(db, testEncKey, &pool.Config{RateLimitBackoff: 5 * time.Second})
+	defer p.Stop()
+
+	id := findID(t, p, "my-claude")
+	p.Mark(id, false)
+	p.ProbeAll()
+
+	if _, err := p.Select(nil, models.ProtocolAnthropic); err == nil {
+		t.Errorf("upstream should remain unavailable after failed probe")
+	}
+}
