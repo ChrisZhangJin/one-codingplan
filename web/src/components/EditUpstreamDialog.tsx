@@ -13,6 +13,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+type Protocol = 'openai' | 'anthropic' | 'both'
+
 export interface UpstreamInfo {
   id: number
   name: string
@@ -21,6 +23,8 @@ export interface UpstreamInfo {
   available: boolean
   model_override?: string
   masked_key?: string
+  protocol?: Protocol
+  passthrough_extensions?: boolean
 }
 
 interface EditUpstreamDialogProps {
@@ -40,6 +44,8 @@ export default function EditUpstreamDialog({
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [modelOverride, setModelOverride] = useState('')
+  const [protocol, setProtocol] = useState<Protocol>('both')
+  const [passthrough, setPassthrough] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -48,6 +54,8 @@ export default function EditUpstreamDialog({
       setBaseUrl(upstream.base_url)
       setApiKey('')
       setModelOverride(upstream.model_override ?? '')
+      setProtocol(upstream.protocol ?? 'both')
+      setPassthrough(upstream.passthrough_extensions ?? false)
     }
   }, [upstream])
 
@@ -59,7 +67,13 @@ export default function EditUpstreamDialog({
     if (!upstream) return
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = { name, base_url: baseUrl, model_override: modelOverride }
+      const body: Record<string, unknown> = {
+        name,
+        base_url: baseUrl,
+        model_override: modelOverride,
+        protocol,
+        passthrough_extensions: protocol !== 'openai' && passthrough,
+      }
       if (apiKey !== '') body.api_key = apiKey
 
       await apiFetch(`/api/upstreams/${upstream.id}`, {
@@ -119,6 +133,42 @@ export default function EditUpstreamDialog({
               onChange={e => setModelOverride(e.target.value)}
             />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Protocol</Label>
+            <div className="flex gap-3 text-sm">
+              {(['openai', 'anthropic', 'both'] as const).map(p => (
+                <label key={p} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="edit-upstream-protocol"
+                    value={p}
+                    checked={protocol === p}
+                    onChange={() => setProtocol(p)}
+                  />
+                  <span>{p === 'openai' ? 'OpenAI' : p === 'anthropic' ? 'Anthropic' : 'Both'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {protocol !== 'openai' && (
+            <div className="flex items-start gap-2">
+              <input
+                id="edit-upstream-passthrough"
+                type="checkbox"
+                checked={passthrough}
+                onChange={e => setPassthrough(e.target.checked)}
+                className="mt-1"
+              />
+              <div className="flex flex-col">
+                <Label htmlFor="edit-upstream-passthrough" className="cursor-pointer">
+                  Forward Claude-specific fields
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  Enable for proxies that terminate at real Claude so <code>thinking</code> and <code>betas</code> reach the API.
+                </span>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={handleClose} disabled={submitting}>
               Cancel

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { apiFetch } from '@/lib/api'
@@ -19,23 +19,45 @@ interface AddUpstreamDialogProps {
   onCreated: () => void
 }
 
-export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: AddUpstreamDialogProps) {
-  const PROVIDERS = ['minimax', 'mimo', 'kimi', 'qwen', 'glm', 'deepseek'] as const
-  const PROVIDER_LABELS: Record<string, string> = {
-    minimax: 'Minimax', mimo: 'Mimo', kimi: 'Kimi', qwen: 'Qwen', glm: 'GLM', deepseek: 'DeepSeek',
-  }
+type Protocol = 'openai' | 'anthropic' | 'both'
 
-  const [name, setName] = useState('')
+const PROVIDERS = ['minimax', 'mimo', 'kimi', 'qwen', 'glm', 'deepseek', 'custom'] as const
+type Provider = (typeof PROVIDERS)[number]
+const PROVIDER_LABELS: Record<Provider, string> = {
+  minimax: 'Minimax', mimo: 'Mimo', kimi: 'Kimi', qwen: 'Qwen', glm: 'GLM', deepseek: 'DeepSeek',
+  custom: 'Custom (self-hosted)',
+}
+const DEFAULT_PROTOCOL: Record<Provider, Protocol> = {
+  minimax: 'both', mimo: 'both', kimi: 'both',
+  qwen: 'openai', glm: 'openai', deepseek: 'openai',
+  custom: 'anthropic',
+}
+
+const CUSTOM_SLUG_REGEX = /^[a-z0-9-]{2,32}$/
+
+export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: AddUpstreamDialogProps) {
+  const [provider, setProvider] = useState<Provider | ''>('')
+  const [customName, setCustomName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [modelOverride, setModelOverride] = useState('')
+  const [protocol, setProtocol] = useState<Protocol>('both')
+  const [passthrough, setPassthrough] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // When the picked provider changes, prefill the protocol radio.
+  useEffect(() => {
+    if (provider) setProtocol(DEFAULT_PROTOCOL[provider])
+  }, [provider])
+
   function resetState() {
-    setName('')
+    setProvider('')
+    setCustomName('')
     setBaseUrl('')
     setApiKey('')
     setModelOverride('')
+    setProtocol('both')
+    setPassthrough(false)
     setSubmitting(false)
   }
 
@@ -44,9 +66,15 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
     resetState()
   }
 
+  const resolvedName = provider === 'custom' ? customName.trim() : provider
+
   async function handleSubmit() {
-    if (!name.trim()) {
-      toast.error('Name is required')
+    if (!provider) {
+      toast.error('Provider is required')
+      return
+    }
+    if (provider === 'custom' && !CUSTOM_SLUG_REGEX.test(customName.trim())) {
+      toast.error('Custom name must be 2–32 chars of [a-z0-9-]')
       return
     }
     if (!baseUrl.trim()) {
@@ -62,10 +90,12 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
       await apiFetch('/api/upstreams', {
         method: 'POST',
         body: JSON.stringify({
-          name: name.trim(),
+          name: resolvedName,
           base_url: baseUrl.trim(),
           api_key: apiKey.trim(),
           model_override: modelOverride.trim(),
+          protocol,
+          passthrough_extensions: protocol !== 'openai' && passthrough,
         }),
       })
       toast.success('Upstream added')
@@ -86,11 +116,11 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="add-upstream-name">Provider</Label>
+            <Label htmlFor="add-upstream-provider">Provider</Label>
             <select
-              id="add-upstream-name"
-              value={name}
-              onChange={e => setName(e.target.value)}
+              id="add-upstream-provider"
+              value={provider}
+              onChange={e => setProvider(e.target.value as Provider | '')}
               className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             >
               <option value="">Select provider…</option>
@@ -99,6 +129,22 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
               ))}
             </select>
           </div>
+          {provider === 'custom' && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="add-upstream-custom-name">Name</Label>
+              <Input
+                id="add-upstream-custom-name"
+                type="text"
+                placeholder="my-claude-proxy"
+                required
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">
+                2–32 chars; lowercase letters, digits, dashes.
+              </span>
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="add-upstream-url">Base URL</Label>
             <Input
@@ -131,6 +177,45 @@ export default function AddUpstreamDialog({ open, onOpenChange, onCreated }: Add
               onChange={e => setModelOverride(e.target.value)}
             />
           </div>
+          <div className="flex flex-col gap-2">
+            <Label>Protocol</Label>
+            <div className="flex gap-3 text-sm">
+              {(['openai', 'anthropic', 'both'] as const).map(p => (
+                <label key={p} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="upstream-protocol"
+                    value={p}
+                    checked={protocol === p}
+                    onChange={() => setProtocol(p)}
+                  />
+                  <span className="capitalize">{p === 'openai' ? 'OpenAI' : p === 'anthropic' ? 'Anthropic' : 'Both'}</span>
+                </label>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              Which API shapes the upstream speaks at this URL.
+            </span>
+          </div>
+          {protocol !== 'openai' && (
+            <div className="flex items-start gap-2">
+              <input
+                id="add-upstream-passthrough"
+                type="checkbox"
+                checked={passthrough}
+                onChange={e => setPassthrough(e.target.checked)}
+                className="mt-1"
+              />
+              <div className="flex flex-col">
+                <Label htmlFor="add-upstream-passthrough" className="cursor-pointer">
+                  Forward Claude-specific fields
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  Enable for proxies that terminate at real Claude so <code>thinking</code> and <code>betas</code> reach the API. Leave off for third-party Anthropic-compatible providers.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={handleClose}>

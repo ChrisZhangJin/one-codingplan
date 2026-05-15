@@ -18,6 +18,12 @@ function displayName(name: string): string {
   return PROVIDER_LABELS[name.toLowerCase()] ?? name
 }
 
+const PROTOCOL_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  both: 'Both',
+}
+
 export default function UpstreamStatus() {
   const [upstreams, setUpstreams] = useState<UpstreamInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -104,7 +110,14 @@ export default function UpstreamStatus() {
               <Card key={upstream.id}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-normal">{displayName(upstream.name)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-normal">{displayName(upstream.name)}</span>
+                      {upstream.protocol && (
+                        <Badge className="bg-slate-500/10 text-slate-600 border-slate-200 text-[10px] font-normal px-1.5 py-0">
+                          {PROTOCOL_LABELS[upstream.protocol] ?? upstream.protocol}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <span className={`h-2 w-2 rounded-full ${dot} inline-block`} />
                       <Badge className={badge.className}>{badge.label}</Badge>
