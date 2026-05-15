@@ -42,6 +42,53 @@ func TestAutoMigrate(t *testing.T) {
 	}
 }
 
+func TestMigrate_ProtocolFixup(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	// Seed rows on the migration default 'both' for known OpenAI-only names.
+	seeds := []models.Upstream{
+		{Name: "deepseek", BaseURL: "https://api.deepseek.com", Protocol: models.ProtocolBoth},
+		{Name: "qwen", BaseURL: "https://dashscope.aliyuncs.com", Protocol: models.ProtocolBoth},
+		{Name: "glm", BaseURL: "https://open.bigmodel.cn", Protocol: models.ProtocolBoth},
+		{Name: "kimi", BaseURL: "https://api.kimi.com/coding", Protocol: models.ProtocolBoth},
+		{Name: "my-claude", BaseURL: "http://proxy", Protocol: models.ProtocolBoth},
+	}
+	for _, u := range seeds {
+		u := u
+		if err := db.Create(&u).Error; err != nil {
+			t.Fatalf("seed %s: %v", u.Name, err)
+		}
+	}
+
+	// Re-running Migrate should flip the three OpenAI-only names and leave the rest alone.
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate (rerun): %v", err)
+	}
+
+	wantProtocol := map[string]string{
+		"deepseek":  models.ProtocolOpenAI,
+		"qwen":      models.ProtocolOpenAI,
+		"glm":       models.ProtocolOpenAI,
+		"kimi":      models.ProtocolBoth,
+		"my-claude": models.ProtocolBoth,
+	}
+	for name, want := range wantProtocol {
+		var got models.Upstream
+		if err := db.First(&got, "name = ?", name).Error; err != nil {
+			t.Fatalf("load %s: %v", name, err)
+		}
+		if got.Protocol != want {
+			t.Errorf("%s: protocol = %q, want %q", name, got.Protocol, want)
+		}
+	}
+}
+
 func TestPersistence(t *testing.T) {
 	f, err := os.CreateTemp("", "test-persist-*.db")
 	if err != nil {

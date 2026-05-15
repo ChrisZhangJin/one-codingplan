@@ -6,6 +6,15 @@ import (
 	"one-codingplan/internal/crypto"
 )
 
+// Protocol values for Upstream.Protocol. An upstream advertises which API
+// shapes it speaks at its BaseURL so the pool only routes compatible frontend
+// requests to it.
+const (
+	ProtocolOpenAI    = "openai"
+	ProtocolAnthropic = "anthropic"
+	ProtocolBoth      = "both"
+)
+
 type Upstream struct {
 	ID        uint      `gorm:"primarykey;autoIncrement"`
 	CreatedAt time.Time
@@ -15,6 +24,8 @@ type Upstream struct {
 	APIKeyEnc []byte `gorm:"column:api_key_enc"`
 	Enabled       bool   `gorm:"default:true"`
 	ModelOverride string `gorm:"column:model_override;default:''"`
+	Protocol              string `gorm:"column:protocol;not null;default:'both'"`
+	PassthroughExtensions bool   `gorm:"column:passthrough_extensions;not null;default:false"`
 }
 
 

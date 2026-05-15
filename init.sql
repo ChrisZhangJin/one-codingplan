@@ -2,25 +2,27 @@
 -- Generated from ocp.db schema
 
 CREATE TABLE IF NOT EXISTS `upstreams` (
-  `id`             integer PRIMARY KEY AUTOINCREMENT,
-  `created_at`     datetime,
-  `updated_at`     datetime,
-  `name`           text    NOT NULL,
-  `base_url`       text    NOT NULL,
-  `api_key_enc`    blob,
-  `enabled`        numeric NOT NULL DEFAULT true,
-  `model_override` text    NOT NULL DEFAULT ""
+  `id`                     integer PRIMARY KEY AUTOINCREMENT,
+  `created_at`             datetime,
+  `updated_at`             datetime,
+  `name`                   text    NOT NULL,
+  `base_url`               text    NOT NULL,
+  `api_key_enc`            blob,
+  `enabled`                numeric NOT NULL DEFAULT true,
+  `model_override`         text    NOT NULL DEFAULT "",
+  `protocol`               text    NOT NULL DEFAULT 'both',
+  `passthrough_extensions` numeric NOT NULL DEFAULT false
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS `idx_upstreams_name` ON `upstreams`(`name`);
 
 -- Upstream seed data (api_key_enc left null — set real keys via portal or PATCH /api/upstreams/:id)
-INSERT OR IGNORE INTO `upstreams` (`name`, `base_url`, `api_key_enc`, `enabled`, `model_override`, `created_at`, `updated_at`) VALUES
-  ('minimax', 'https://api.minimaxi.com',                    NULL, 0, 'MiniMax-M2.5', datetime('now'), datetime('now')),
-  ('kimi',    'https://api.kimi.com/coding',                 NULL, 0, '',             datetime('now'), datetime('now')),
-  ('qwen',    'https://dashscope.aliyuncs.com',              NULL, 0, '',             datetime('now'), datetime('now')),
-  ('mimo',    'https://token-plan-cn.xiaomimimo.com',        NULL, 0, 'mimo-v2-pro',  datetime('now'), datetime('now')),
-  ('deepseek','https://api.deepseek.com',                    NULL, 1, 'deepseek-chat',datetime('now'), datetime('now'))
+INSERT OR IGNORE INTO `upstreams` (`name`, `base_url`, `api_key_enc`, `enabled`, `model_override`, `protocol`, `created_at`, `updated_at`) VALUES
+  ('minimax', 'https://api.minimaxi.com',                    NULL, 0, 'MiniMax-M2.5', 'both',     datetime('now'), datetime('now')),
+  ('kimi',    'https://api.kimi.com/coding',                 NULL, 0, '',             'both',     datetime('now'), datetime('now')),
+  ('qwen',    'https://dashscope.aliyuncs.com',              NULL, 0, '',             'openai',   datetime('now'), datetime('now')),
+  ('mimo',    'https://token-plan-cn.xiaomimimo.com',        NULL, 0, 'mimo-v2-pro',  'both',     datetime('now'), datetime('now')),
+  ('deepseek','https://api.deepseek.com',                    NULL, 1, 'deepseek-chat','openai',   datetime('now'), datetime('now'))
 ;
 
 CREATE TABLE IF NOT EXISTS `access_keys` (

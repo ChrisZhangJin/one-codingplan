@@ -45,5 +45,20 @@ func (gormSlogWriter) Printf(format string, args ...any) {
 }
 
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(&models.Upstream{}, &models.AccessKey{}, &models.UsageRecord{})
+	if err := db.AutoMigrate(&models.Upstream{}, &models.AccessKey{}, &models.UsageRecord{}); err != nil {
+		return err
+	}
+	// One-shot protocol fix-up: AutoMigrate adds the protocol column with
+	// default 'both', but the known providers below are OpenAI-only — without
+	// this, /v1/messages would waste a failover roundtrip on each before
+	// finding a real Anthropic-compat upstream. Idempotent: only flips rows
+	// that are still on the migration default.
+	if err := db.Exec(
+		"UPDATE upstreams SET protocol = ? WHERE protocol = ? AND name IN ?",
+		models.ProtocolOpenAI, models.ProtocolBoth,
+		[]string{"qwen", "glm", "deepseek"},
+	).Error; err != nil {
+		return fmt.Errorf("migrate: fixup protocol: %w", err)
+	}
+	return nil
 }
