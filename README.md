@@ -25,6 +25,13 @@ ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo an
 
 All providers are managed via the portal — no code changes needed to add or switch providers.
 
+### Custom upstreams (self-hosted Anthropic proxies)
+
+You can register an arbitrary upstream from the portal — e.g. a self-hosted Anthropic-compatible proxy that ultimately terminates at real Claude. In **Upstream Status → Add Upstream**, pick **Custom (self-hosted)**, give the upstream a slug (`[a-z0-9-]{2,32}`), and set:
+
+- **Protocol** — `Anthropic` if the upstream only speaks `/v1/messages`, `OpenAI` for `/v1/chat/completions`, or `Both`. ocp will only route a frontend to a compatible upstream, so an OpenAI client and an Anthropic-only upstream can coexist in the same pool.
+- **Forward Claude-specific fields** — turn this on when the upstream proxies to real Claude. ocp will forward `thinking` and `betas` unmodified. Leave it off for third-party Anthropic-compatible providers (Kimi, Minimax, etc.) that don't understand those fields.
+
 ---
 
 ## Use with Claude Code / Codex

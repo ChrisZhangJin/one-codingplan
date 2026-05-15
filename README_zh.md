@@ -48,6 +48,15 @@ OCP_ENCRYPTION_KEY=<16字符密钥> ./ocp --config config.yaml
 
 ---
 
+## 自定义上游（自建 Anthropic 代理）
+
+可以从管理面板添加任意上游 —— 例如一个最终转发到真实 Claude 的自建 Anthropic 兼容代理。在 **Upstream Status → Add Upstream** 中选择 **Custom (self-hosted)**，填写 slug（`[a-z0-9-]{2,32}`），然后设置：
+
+- **Protocol**：仅讲 `/v1/messages` 选 `Anthropic`；仅讲 `/v1/chat/completions` 选 `OpenAI`；都讲选 `Both`。ocp 仅会把请求路由到与前端兼容的上游，因此 OpenAI 客户端和 Anthropic-only 上游可以共存于同一池。
+- **Forward Claude-specific fields**：上游会代理到真实 Claude 时打开，ocp 会原样转发 `thinking` 和 `betas`。第三方 Anthropic 兼容服务（Kimi、Minimax 等）不识别这些字段，保持关闭即可。
+
+---
+
 ## 管理 API
 
 所有管理接口需要 `Authorization: Bearer <admin_key>` 请求头。
