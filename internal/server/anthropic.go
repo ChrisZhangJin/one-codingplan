@@ -79,9 +79,9 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 	allowedUpstreams := parseAllowedUpstreams(accessKey.AllowedUpstreams)
 	start := time.Now()
 
-	// Strip Claude-specific fields that third-party upstreams (Kimi, Minimax, GLM, etc.)
-	// do not understand. Sending them causes unpredictable behavior — Kimi in particular
-	// never terminates the SSE stream when it receives "thinking".
+	// Pre-compute the sanitized body once. Sent to third-party upstreams
+	// (Kimi, Minimax, GLM, etc.) that do not understand Claude-specific
+	// fields — Kimi in particular never terminates SSE when it sees "thinking".
 	sanitizedBody, err := stripAnthropicExtensions(bodyBytes)
 	if err != nil {
 		sanitizedBody = bodyBytes // fall back to original if stripping fails
@@ -90,7 +90,7 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 	seen := make(map[uint]bool)
 
 	for {
-		up, err := s.pool.Select(allowedUpstreams, "")
+		up, err := s.pool.Select(allowedUpstreams, models.ProtocolAnthropic)
 		if errors.Is(err, pool.ErrNoUpstreams) {
 			break
 		}
@@ -102,9 +102,14 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 		seen[up.ID] = true
 
+		// Upstreams that proxy directly to real Claude (passthrough_extensions=true)
+		// see the original body so thinking/betas reach the real API.
 		sendBody := sanitizedBody
+		if up.PassthroughExtensions {
+			sendBody = bodyBytes
+		}
 		if up.ModelOverride != "" {
-			if rewritten, err := rewriteModel(sanitizedBody, up.ModelOverride); err == nil {
+			if rewritten, err := rewriteModel(sendBody, up.ModelOverride); err == nil {
 				sendBody = rewritten
 			}
 		}

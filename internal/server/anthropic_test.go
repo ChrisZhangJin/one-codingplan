@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"one-codingplan/internal/models"
 )
 
 // anthropicReqBody builds a minimal valid AnthropicRequest JSON.
@@ -499,5 +501,120 @@ func TestRelay_OpenAI_Regression(t *testing.T) {
 	ct := w.Header().Get("Content-Type")
 	if !strings.Contains(ct, "application/json") {
 		t.Errorf("expected application/json content-type, got %q", ct)
+	}
+}
+
+// TestAnthropicRelay_SkipsOpenAIOnlyUpstream proves /v1/messages won't burn
+// a roundtrip on an openai-only upstream.
+func TestAnthropicRelay_SkipsOpenAIOnlyUpstream(t *testing.T) {
+	db := setupTestDB(t)
+
+	openAIHits, anthropicHits := 0, 0
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		openAIHits++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer openAISrv.Close()
+	anthropicSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		anthropicHits++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(anthropicResponseBody("ok", 1, 1)))
+	}))
+	defer anthropicSrv.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstreamWithProtocol(t, db, "openai-only", openAISrv.URL, models.ProtocolOpenAI, false)
+	seedUpstreamWithProtocol(t, db, "anthropic-only", anthropicSrv.URL, models.ProtocolAnthropic, false)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages",
+		bytes.NewReader(anthropicReqBody(false)))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if openAIHits != 0 {
+		t.Errorf("openai-only upstream was called %d times — protocol filter not applied", openAIHits)
+	}
+	if anthropicHits == 0 {
+		t.Errorf("anthropic upstream was never called")
+	}
+}
+
+// TestAnthropicRelay_PassthroughExtensions_KeepsThinking proves
+// passthrough_extensions=true forwards the body unmodified — proxies that
+// terminate at real Claude need to see "thinking" and "betas".
+func TestAnthropicRelay_PassthroughExtensions_KeepsThinking(t *testing.T) {
+	db := setupTestDB(t)
+
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(anthropicResponseBody("ok", 1, 1)))
+	}))
+	defer upstream.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstreamWithProtocol(t, db, "real-claude", upstream.URL, models.ProtocolAnthropic, true)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	body := []byte(`{"model":"claude-opus-4-5","max_tokens":10,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"enabled"},"betas":["b1"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(capturedBody, []byte(`"thinking"`)) {
+		t.Errorf("expected upstream to receive thinking field, got: %s", capturedBody)
+	}
+	if !bytes.Contains(capturedBody, []byte(`"betas"`)) {
+		t.Errorf("expected upstream to receive betas field, got: %s", capturedBody)
+	}
+}
+
+// TestAnthropicRelay_NoPassthrough_StripsThinking is the regression that
+// the strip behavior remains the default for non-passthrough upstreams.
+func TestAnthropicRelay_NoPassthrough_StripsThinking(t *testing.T) {
+	db := setupTestDB(t)
+
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(anthropicResponseBody("ok", 1, 1)))
+	}))
+	defer upstream.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstreamWithProtocol(t, db, "third-party", upstream.URL, models.ProtocolAnthropic, false)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	body := []byte(`{"model":"claude-opus-4-5","max_tokens":10,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"enabled"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if bytes.Contains(capturedBody, []byte(`"thinking"`)) {
+		t.Errorf("expected upstream to NOT receive thinking field, got: %s", capturedBody)
 	}
 }

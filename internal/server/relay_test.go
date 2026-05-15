@@ -58,11 +58,19 @@ func seedAccessKey(t *testing.T, db *gorm.DB, token string, enabled bool) models
 
 func seedUpstream(t *testing.T, db *gorm.DB, name, baseURL string) models.Upstream {
 	t.Helper()
+	return seedUpstreamWithProtocol(t, db, name, baseURL, models.ProtocolBoth, false)
+}
+
+func seedUpstreamWithProtocol(t *testing.T, db *gorm.DB, name, baseURL, protocol string, passthrough bool) models.Upstream {
+	t.Helper()
 	enc, err := crypto.Encrypt(testEncKey, "fake-api-key")
 	if err != nil {
 		t.Fatalf("encrypt key: %v", err)
 	}
-	u := models.Upstream{Name: name, BaseURL: baseURL, APIKeyEnc: enc, Enabled: true}
+	u := models.Upstream{
+		Name: name, BaseURL: baseURL, APIKeyEnc: enc, Enabled: true,
+		Protocol: protocol, PassthroughExtensions: passthrough,
+	}
 	if err := db.Create(&u).Error; err != nil {
 		t.Fatalf("seed upstream: %v", err)
 	}
@@ -784,3 +792,46 @@ func TestRelay_Stream_Failover(t *testing.T) {
 
 // Ensure the test file has >100 lines
 var _ = fmt.Sprintf
+
+// TestRelay_SkipsAnthropicOnlyUpstream proves /v1/chat/completions won't
+// burn a roundtrip on an anthropic-only upstream.
+func TestRelay_SkipsAnthropicOnlyUpstream(t *testing.T) {
+	db := setupTestDB(t)
+
+	openAIHits, anthropicHits := int32(0), int32(0)
+	openAISrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&openAIHits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(upstreamResponse(1, 1))
+	}))
+	defer openAISrv.Close()
+	anthropicSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&anthropicHits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer anthropicSrv.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstreamWithProtocol(t, db, "openai-only", openAISrv.URL, models.ProtocolOpenAI, false)
+	seedUpstreamWithProtocol(t, db, "anthropic-only", anthropicSrv.URL, models.ProtocolAnthropic, false)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewReader(chatReqBody(false)))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if atomic.LoadInt32(&anthropicHits) != 0 {
+		t.Errorf("anthropic-only upstream was called %d times — protocol filter not applied", anthropicHits)
+	}
+	if atomic.LoadInt32(&openAIHits) == 0 {
+		t.Errorf("openai upstream was never called")
+	}
+}

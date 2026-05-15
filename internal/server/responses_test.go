@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"one-codingplan/internal/models"
 )
 
 func responsesReqBody(stream bool, input interface{}) []byte {
@@ -369,4 +371,52 @@ func TestResponsesRelay_NoUpstream(t *testing.T) {
 	if w.Code != 503 {
 		t.Errorf("expected 503, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+// TestResponsesRelay_SkipsAnthropicOnlyUpstream proves /v1/responses won't
+// burn a roundtrip on an anthropic-only upstream — Responses translates
+// to OpenAI Chat Completions internally.
+func TestResponsesRelay_SkipsAnthropicOnlyUpstream(t *testing.T) {
+	db := setupTestDB(t)
+
+	openAIHits, anthropicHits := int32(0), int32(0)
+	openAISrv := fakeOpenAIUpstreamCount(openAIResponseBody("Hello", "stop", 5, 3), &openAIHits)
+	defer openAISrv.Close()
+	anthropicSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&anthropicHits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer anthropicSrv.Close()
+
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstreamWithProtocol(t, db, "openai-only", openAISrv.URL, models.ProtocolOpenAI, false)
+	seedUpstreamWithProtocol(t, db, "anthropic-only", anthropicSrv.URL, models.ProtocolAnthropic, false)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses",
+		bytes.NewReader(responsesReqBody(false, defaultInput())))
+	req.Header.Set("Authorization", "Bearer test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if atomic.LoadInt32(&anthropicHits) != 0 {
+		t.Errorf("anthropic-only upstream was called %d times — protocol filter not applied", anthropicHits)
+	}
+	if atomic.LoadInt32(&openAIHits) == 0 {
+		t.Errorf("openai upstream was never called")
+	}
+}
+
+func fakeOpenAIUpstreamCount(body []byte, counter *int32) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(counter, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
+	}))
 }
