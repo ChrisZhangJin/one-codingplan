@@ -309,7 +309,7 @@ func (s *Server) handleCreateUpstream(c *gin.Context) {
 		return
 	}
 
-	s.pool.AddEntry(upstream.ID, upstream.Name, upstream.BaseURL, req.APIKey, upstream.ModelOverride)
+	s.pool.AddEntry(upstream.ID, upstream.Name, upstream.BaseURL, req.APIKey, upstream.ModelOverride, upstream.Protocol, upstream.PassthroughExtensions)
 
 	maskedKey := maskAPIKey(req.APIKey)
 	info := s.pool.List()
@@ -403,7 +403,7 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 	if req.APIKey != nil && *req.APIKey != "" {
 		keyForPool = *req.APIKey
 	}
-	s.pool.UpdateEntry(upstream.ID, upstream.Name, upstream.BaseURL, keyForPool, upstream.ModelOverride)
+	s.pool.UpdateEntry(upstream.ID, upstream.Name, upstream.BaseURL, keyForPool, upstream.ModelOverride, upstream.Protocol, upstream.PassthroughExtensions)
 
 	info := s.pool.List()
 	maskedKey := maskAPIKey(plainKey)

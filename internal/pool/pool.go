@@ -16,11 +16,13 @@ var ErrNoUpstreams = errors.New("pool: no available upstreams")
 
 // UpstreamEntry is the public view of an upstream returned by Select.
 type UpstreamEntry struct {
-	ID            uint
-	Name          string
-	BaseURL       string
-	APIKey        string
-	ModelOverride string
+	ID                    uint
+	Name                  string
+	BaseURL               string
+	APIKey                string
+	ModelOverride         string
+	Protocol              string
+	PassthroughExtensions bool
 }
 
 // entry is the internal pool entry with availability state.
@@ -60,11 +62,13 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 		}
 		entries = append(entries, entry{
 			UpstreamEntry: UpstreamEntry{
-				ID:            u.ID,
-				Name:          u.Name,
-				BaseURL:       u.BaseURL,
-				APIKey:        apiKey,
-				ModelOverride: u.ModelOverride,
+				ID:                    u.ID,
+				Name:                  u.Name,
+				BaseURL:               u.BaseURL,
+				APIKey:                apiKey,
+				ModelOverride:         u.ModelOverride,
+				Protocol:              normalizeProtocol(u.Protocol),
+				PassthroughExtensions: u.PassthroughExtensions,
 			},
 			available: u.Enabled,
 			enabled:   u.Enabled,
@@ -82,6 +86,7 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 func NewForTest(entries []UpstreamEntry) *Pool {
 	es := make([]entry, len(entries))
 	for i, e := range entries {
+		e.Protocol = normalizeProtocol(e.Protocol)
 		es[i] = entry{UpstreamEntry: e, available: true}
 	}
 	return &Pool{
@@ -93,20 +98,45 @@ func NewForTest(entries []UpstreamEntry) *Pool {
 
 // UpstreamInfo is the public view of an upstream returned by List (no API key).
 type UpstreamInfo struct {
-	ID            uint   `json:"id"`
-	Name          string `json:"name"`
-	BaseURL       string `json:"base_url"`
-	Enabled       bool   `json:"enabled"`
-	Available     bool   `json:"available"`
-	ModelOverride string `json:"model_override,omitempty"`
-	MaskedKey     string `json:"masked_key,omitempty"`
-	Position      bool   `json:"position"`
+	ID                    uint   `json:"id"`
+	Name                  string `json:"name"`
+	BaseURL               string `json:"base_url"`
+	Enabled               bool   `json:"enabled"`
+	Available             bool   `json:"available"`
+	ModelOverride         string `json:"model_override,omitempty"`
+	MaskedKey             string `json:"masked_key,omitempty"`
+	Position              bool   `json:"position"`
+	Protocol              string `json:"protocol"`
+	PassthroughExtensions bool   `json:"passthrough_extensions"`
+}
+
+// normalizeProtocol returns a valid Protocol value, defaulting to
+// models.ProtocolBoth for empty or unknown inputs. This keeps pre-migration
+// rows (where protocol may be NULL on disk) functional.
+func normalizeProtocol(p string) string {
+	switch p {
+	case models.ProtocolOpenAI, models.ProtocolAnthropic, models.ProtocolBoth:
+		return p
+	default:
+		return models.ProtocolBoth
+	}
+}
+
+// matchesProtocol reports whether an entry advertising entryProto can serve
+// a request requiring wantProto. An empty wantProto matches anything.
+func matchesProtocol(entryProto, wantProto string) bool {
+	if wantProto == "" {
+		return true
+	}
+	return entryProto == wantProto || entryProto == models.ProtocolBoth
 }
 
 // Select returns the next available upstream using round-robin.
 // If allowedUpstreams is non-empty, only upstreams in that list are considered.
+// If wantProtocol is non-empty, only upstreams with that protocol or
+// models.ProtocolBoth are considered.
 // Returns ErrNoUpstreams if no matching available upstream exists.
-func (p *Pool) Select(allowedUpstreams []string) (*UpstreamEntry, error) {
+func (p *Pool) Select(allowedUpstreams []string, wantProtocol string) (*UpstreamEntry, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	n := len(p.entries)
@@ -121,7 +151,7 @@ func (p *Pool) Select(allowedUpstreams []string) (*UpstreamEntry, error) {
 	for i := 0; i < n; i++ {
 		p.idx = (p.idx + 1) % n
 		e := &p.entries[p.idx]
-		if e.available && (unrestricted || allowed[e.Name]) {
+		if e.available && (unrestricted || allowed[e.Name]) && matchesProtocol(e.Protocol, wantProtocol) {
 			out := e.UpstreamEntry
 			return &out, nil
 		}
@@ -154,13 +184,15 @@ func (p *Pool) List() []UpstreamInfo {
 	result := make([]UpstreamInfo, len(p.entries))
 	for i, e := range p.entries {
 		result[i] = UpstreamInfo{
-			ID:            e.ID,
-			Name:          e.Name,
-			BaseURL:       e.BaseURL,
-			Enabled:       e.enabled,
-			Available:     e.available,
-			ModelOverride: e.ModelOverride,
-			Position:      i == p.idx,
+			ID:                    e.ID,
+			Name:                  e.Name,
+			BaseURL:               e.BaseURL,
+			Enabled:               e.enabled,
+			Available:             e.available,
+			ModelOverride:         e.ModelOverride,
+			Position:              i == p.idx,
+			Protocol:              e.Protocol,
+			PassthroughExtensions: e.PassthroughExtensions,
 		}
 	}
 	return result
@@ -168,7 +200,7 @@ func (p *Pool) List() []UpstreamInfo {
 
 // UpdateEntry updates the editable fields of the pool entry with the given ID.
 // If apiKey is empty, the existing key is preserved.
-func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride string) {
+func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, protocol string, passthroughExtensions bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for i := range p.entries {
@@ -179,6 +211,8 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride string)
 				p.entries[i].APIKey = apiKey
 			}
 			p.entries[i].ModelOverride = modelOverride
+			p.entries[i].Protocol = normalizeProtocol(protocol)
+			p.entries[i].PassthroughExtensions = passthroughExtensions
 			return
 		}
 	}
@@ -186,16 +220,18 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride string)
 
 // AddEntry adds a new upstream entry to the pool.
 // The entry is marked available and enabled.
-func (p *Pool) AddEntry(id uint, name, baseURL, apiKey, modelOverride string) {
+func (p *Pool) AddEntry(id uint, name, baseURL, apiKey, modelOverride, protocol string, passthroughExtensions bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.entries = append(p.entries, entry{
 		UpstreamEntry: UpstreamEntry{
-			ID:            id,
-			Name:          name,
-			BaseURL:       baseURL,
-			APIKey:        apiKey,
-			ModelOverride: modelOverride,
+			ID:                    id,
+			Name:                  name,
+			BaseURL:               baseURL,
+			APIKey:                apiKey,
+			ModelOverride:         modelOverride,
+			Protocol:              normalizeProtocol(protocol),
+			PassthroughExtensions: passthroughExtensions,
 		},
 		available: true,
 		enabled:   true,

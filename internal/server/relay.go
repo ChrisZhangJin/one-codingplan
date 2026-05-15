@@ -151,7 +151,7 @@ func (s *Server) handleRelay(c *gin.Context) {
 	var current *pool.UpstreamEntry
 
 	for {
-		up, err := s.pool.Select(allowedUpstreams)
+		up, err := s.pool.Select(allowedUpstreams, "")
 		if errors.Is(err, pool.ErrNoUpstreams) {
 			break
 		}

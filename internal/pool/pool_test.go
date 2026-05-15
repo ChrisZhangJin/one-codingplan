@@ -40,7 +40,7 @@ func TestForceRotate_AllUnavailable(t *testing.T) {
 	ids := []uint{}
 	seen := map[string]bool{}
 	for len(seen) < 2 {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -62,7 +62,7 @@ func TestSelectWithFilter_Unrestricted(t *testing.T) {
 	p := newTestPool(t, "kimi", "glm", "qwen")
 	seen := map[string]bool{}
 	for i := 0; i < 6; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -76,7 +76,7 @@ func TestSelectWithFilter_Unrestricted(t *testing.T) {
 func TestSelectWithFilter_Restricted(t *testing.T) {
 	p := newTestPool(t, "kimi", "glm", "qwen")
 	for i := 0; i < 5; i++ {
-		e, err := p.Select([]string{"kimi"})
+		e, err := p.Select([]string{"kimi"}, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -88,7 +88,7 @@ func TestSelectWithFilter_Restricted(t *testing.T) {
 
 func TestSelectWithFilter_NoMatch(t *testing.T) {
 	p := newTestPool(t, "kimi", "glm", "qwen")
-	_, err := p.Select([]string{"nonexistent"})
+	_, err := p.Select([]string{"nonexistent"}, "")
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams, got %v", err)
 	}
@@ -149,7 +149,7 @@ func TestSelect_RoundRobin(t *testing.T) {
 	p := newTestPool(t, "a", "b")
 	seen := map[string]int{}
 	for i := 0; i < 10; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -166,7 +166,7 @@ func TestSelect_SkipsUnavailable(t *testing.T) {
 	// Find a's ID by selecting until we get "a"
 	var aID uint
 	for i := 0; i < 4; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -181,7 +181,7 @@ func TestSelect_SkipsUnavailable(t *testing.T) {
 
 	p.Mark(aID, false)
 	for i := 0; i < 3; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select after mark: %v", err)
 		}
@@ -198,7 +198,7 @@ func TestSelect_NoUpstreams(t *testing.T) {
 	var ids []uint
 	seen := map[string]bool{}
 	for len(ids) < 2 {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			break
 		}
@@ -211,7 +211,7 @@ func TestSelect_NoUpstreams(t *testing.T) {
 		p.Mark(id, false)
 	}
 
-	_, err := p.Select(nil)
+	_, err := p.Select(nil, "")
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams, got %v", err)
 	}
@@ -224,7 +224,7 @@ func TestMark_Available(t *testing.T) {
 	var aID uint
 	seen := map[string]bool{}
 	for len(seen) < 2 {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -239,7 +239,7 @@ func TestMark_Available(t *testing.T) {
 
 	p.Mark(aID, false)
 	// Should only see b now
-	e, err := p.Select(nil)
+	e, err := p.Select(nil, "")
 	if err != nil {
 		t.Fatalf("Select after marking a unavailable: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestMark_Available(t *testing.T) {
 	p.Mark(aID, true)
 	seenAfter := map[string]bool{}
 	for i := 0; i < 4; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select after re-enabling a: %v", err)
 		}
@@ -270,7 +270,7 @@ func TestSelect_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				if _, err := p.Select(nil); err != nil {
+				if _, err := p.Select(nil, ""); err != nil {
 					t.Errorf("concurrent Select: %v", err)
 					return
 				}
@@ -330,7 +330,7 @@ func TestNew_LoadsFromDB(t *testing.T) {
 	// Select() must still skip z.
 	seen := map[string]bool{}
 	for i := 0; i < 4; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select: %v", err)
 		}
@@ -347,7 +347,7 @@ func TestNew_LoadsFromDB(t *testing.T) {
 	p.SetEnabled("z", true)
 	seenAfter := map[string]bool{}
 	for i := 0; i < 6; i++ {
-		e, err := p.Select(nil)
+		e, err := p.Select(nil, "")
 		if err != nil {
 			t.Fatalf("Select after SetEnabled(z, true): %v", err)
 		}
@@ -379,11 +379,99 @@ func TestNew_DecryptsKeys(t *testing.T) {
 	}
 	defer p.Stop()
 
-	e, err := p.Select(nil)
+	e, err := p.Select(nil, "")
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
 	if e.APIKey != "sk-secret-key" {
 		t.Errorf("expected decrypted key sk-secret-key, got %q", e.APIKey)
+	}
+}
+
+func TestSelect_FiltersByProtocol_OpenAI(t *testing.T) {
+	p := pool.NewForTest([]pool.UpstreamEntry{
+		{ID: 1, Name: "openai-only", Protocol: models.ProtocolOpenAI},
+		{ID: 2, Name: "anthropic-only", Protocol: models.ProtocolAnthropic},
+		{ID: 3, Name: "both", Protocol: models.ProtocolBoth},
+	})
+
+	seen := map[string]bool{}
+	for i := 0; i < 8; i++ {
+		e, err := p.Select(nil, models.ProtocolOpenAI)
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		seen[e.Name] = true
+	}
+	if seen["anthropic-only"] {
+		t.Errorf("anthropic-only upstream was selected for openai request")
+	}
+	if !seen["openai-only"] || !seen["both"] {
+		t.Errorf("expected openai-only and both to be reachable, got %v", seen)
+	}
+}
+
+func TestSelect_FiltersByProtocol_Anthropic(t *testing.T) {
+	p := pool.NewForTest([]pool.UpstreamEntry{
+		{ID: 1, Name: "openai-only", Protocol: models.ProtocolOpenAI},
+		{ID: 2, Name: "anthropic-only", Protocol: models.ProtocolAnthropic},
+		{ID: 3, Name: "both", Protocol: models.ProtocolBoth},
+	})
+
+	seen := map[string]bool{}
+	for i := 0; i < 8; i++ {
+		e, err := p.Select(nil, models.ProtocolAnthropic)
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		seen[e.Name] = true
+	}
+	if seen["openai-only"] {
+		t.Errorf("openai-only upstream was selected for anthropic request")
+	}
+	if !seen["anthropic-only"] || !seen["both"] {
+		t.Errorf("expected anthropic-only and both to be reachable, got %v", seen)
+	}
+}
+
+func TestSelect_NoProtocolMatchReturnsErr(t *testing.T) {
+	p := pool.NewForTest([]pool.UpstreamEntry{
+		{ID: 1, Name: "openai-only", Protocol: models.ProtocolOpenAI},
+	})
+	_, err := p.Select(nil, models.ProtocolAnthropic)
+	if err != pool.ErrNoUpstreams {
+		t.Errorf("expected ErrNoUpstreams, got %v", err)
+	}
+}
+
+func TestSelect_EmptyProtocolMatchesAll(t *testing.T) {
+	p := pool.NewForTest([]pool.UpstreamEntry{
+		{ID: 1, Name: "openai-only", Protocol: models.ProtocolOpenAI},
+		{ID: 2, Name: "anthropic-only", Protocol: models.ProtocolAnthropic},
+	})
+	seen := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		e, err := p.Select(nil, "")
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		seen[e.Name] = true
+	}
+	if len(seen) != 2 {
+		t.Errorf("expected both upstreams reachable with empty protocol, got %v", seen)
+	}
+}
+
+func TestSelect_LegacyEmptyProtocolEntryTreatedAsBoth(t *testing.T) {
+	// Entries with no Protocol set (zero string) must remain selectable to
+	// keep pre-migration rows working until they get explicit values.
+	p := pool.NewForTest([]pool.UpstreamEntry{
+		{ID: 1, Name: "legacy", Protocol: ""},
+	})
+	if _, err := p.Select(nil, models.ProtocolOpenAI); err != nil {
+		t.Errorf("legacy entry should match openai: %v", err)
+	}
+	if _, err := p.Select(nil, models.ProtocolAnthropic); err != nil {
+		t.Errorf("legacy entry should match anthropic: %v", err)
 	}
 }

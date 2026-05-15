@@ -74,7 +74,7 @@ func (s *Server) handleResponsesRelay(c *gin.Context) {
 	seen := make(map[uint]bool)
 
 	for {
-		up, err := s.pool.Select(allowedUpstreams)
+		up, err := s.pool.Select(allowedUpstreams, "")
 		if errors.Is(err, pool.ErrNoUpstreams) {
 			slog.Debug("responses no upstream available", "seen", len(seen))
 			break
