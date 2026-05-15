@@ -278,16 +278,37 @@ func (s *Server) handleDeleteKey(c *gin.Context) {
 }
 
 type createUpstreamRequest struct {
-	Name          string `json:"name" binding:"required"`
-	BaseURL       string `json:"base_url" binding:"required"`
-	APIKey        string `json:"api_key" binding:"required"`
-	ModelOverride string `json:"model_override"`
+	Name                  string `json:"name" binding:"required"`
+	BaseURL               string `json:"base_url" binding:"required"`
+	APIKey                string `json:"api_key" binding:"required"`
+	ModelOverride         string `json:"model_override"`
+	Protocol              string `json:"protocol"`
+	PassthroughExtensions bool   `json:"passthrough_extensions"`
+}
+
+// validateProtocol checks the protocol is one of the known values and
+// returns the value to persist. Empty input defaults to ProtocolBoth.
+func validateProtocol(p string) (string, bool) {
+	switch p {
+	case "":
+		return models.ProtocolBoth, true
+	case models.ProtocolOpenAI, models.ProtocolAnthropic, models.ProtocolBoth:
+		return p, true
+	default:
+		return "", false
+	}
 }
 
 func (s *Server) handleCreateUpstream(c *gin.Context) {
 	var req createUpstreamRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	proto, ok := validateProtocol(req.Protocol)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid protocol: must be openai, anthropic, or both"})
 		return
 	}
 
@@ -298,11 +319,13 @@ func (s *Server) handleCreateUpstream(c *gin.Context) {
 	}
 
 	upstream := models.Upstream{
-		Name:          req.Name,
-		BaseURL:       req.BaseURL,
-		APIKeyEnc:     enc,
-		Enabled:       true,
-		ModelOverride: req.ModelOverride,
+		Name:                  req.Name,
+		BaseURL:               req.BaseURL,
+		APIKeyEnc:             enc,
+		Enabled:               true,
+		ModelOverride:         req.ModelOverride,
+		Protocol:              proto,
+		PassthroughExtensions: req.PassthroughExtensions,
 	}
 	if err := s.db.Create(&upstream).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream"})
@@ -332,10 +355,12 @@ func (s *Server) handleCreateUpstream(c *gin.Context) {
 }
 
 type patchUpstreamRequest struct {
-	Name          *string `json:"name"`
-	BaseURL       *string `json:"base_url"`
-	APIKey        *string `json:"api_key"`
-	ModelOverride *string `json:"model_override"`
+	Name                  *string `json:"name"`
+	BaseURL               *string `json:"base_url"`
+	APIKey                *string `json:"api_key"`
+	ModelOverride         *string `json:"model_override"`
+	Protocol              *string `json:"protocol"`
+	PassthroughExtensions *bool   `json:"passthrough_extensions"`
 }
 
 // maskAPIKey masks an API key showing last 4 chars with *** prefix.
@@ -369,6 +394,17 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 	}
 	if req.ModelOverride != nil {
 		updates["model_override"] = *req.ModelOverride
+	}
+	if req.Protocol != nil {
+		proto, ok := validateProtocol(*req.Protocol)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid protocol: must be openai, anthropic, or both"})
+			return
+		}
+		updates["protocol"] = proto
+	}
+	if req.PassthroughExtensions != nil {
+		updates["passthrough_extensions"] = *req.PassthroughExtensions
 	}
 	if req.APIKey != nil && *req.APIKey != "" {
 		enc, err := crypto.Encrypt(s.encKey, *req.APIKey)

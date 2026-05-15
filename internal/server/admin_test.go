@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -819,3 +820,179 @@ func TestListKeys_DayUsage_StaleWindow(t *testing.T) {
 
 // Ensure time import used
 var _ = time.Now
+
+// setupAdminTestWithRealPool builds an admin test server with a real Pool +
+// usable encryption key, so handleCreateUpstream / handleUpdateUpstream can
+// encrypt + decrypt API keys end-to-end.
+func setupAdminTestWithRealPool(t *testing.T) (*server.Server, *gorm.DB) {
+	t.Helper()
+	db, err := database.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	encKey := []byte("test-encryption-key-32bytes!!XXX")
+	p, err := pool.New(db, encKey, &pool.Config{RateLimitBackoff: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("pool.New: %v", err)
+	}
+	t.Cleanup(func() { p.Stop() })
+	cfg := &config.Config{}
+	cfg.Server.AdminKey = "test-admin-key"
+	srv := server.New(db, cfg, p, encKey)
+	return srv, db
+}
+
+func TestCreateUpstream_WithProtocol(t *testing.T) {
+	srv, db := setupAdminTestWithRealPool(t)
+	engine := srv.Engine()
+
+	body := map[string]interface{}{
+		"name":                   "my-claude",
+		"base_url":               "http://proxy.example.com",
+		"api_key":                "sk-proxy",
+		"protocol":               "anthropic",
+		"passthrough_extensions": true,
+	}
+	req := adminReq(t, http.MethodPost, "/api/upstreams", body)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["protocol"] != "anthropic" {
+		t.Errorf("response protocol = %v, want anthropic", resp["protocol"])
+	}
+	if resp["passthrough_extensions"] != true {
+		t.Errorf("response passthrough_extensions = %v, want true", resp["passthrough_extensions"])
+	}
+
+	var stored models.Upstream
+	if err := db.First(&stored, "name = ?", "my-claude").Error; err != nil {
+		t.Fatalf("upstream not stored: %v", err)
+	}
+	if stored.Protocol != models.ProtocolAnthropic {
+		t.Errorf("stored protocol = %q, want anthropic", stored.Protocol)
+	}
+	if !stored.PassthroughExtensions {
+		t.Errorf("stored passthrough_extensions = false, want true")
+	}
+}
+
+func TestCreateUpstream_DefaultProtocolIsBoth(t *testing.T) {
+	srv, db := setupAdminTestWithRealPool(t)
+	engine := srv.Engine()
+
+	body := map[string]interface{}{
+		"name":     "no-proto",
+		"base_url": "http://example.com",
+		"api_key":  "sk-x",
+	}
+	req := adminReq(t, http.MethodPost, "/api/upstreams", body)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var stored models.Upstream
+	db.First(&stored, "name = ?", "no-proto")
+	if stored.Protocol != models.ProtocolBoth {
+		t.Errorf("stored protocol = %q, want both (default)", stored.Protocol)
+	}
+}
+
+func TestCreateUpstream_InvalidProtocol(t *testing.T) {
+	srv, _ := setupAdminTestWithRealPool(t)
+	engine := srv.Engine()
+
+	body := map[string]interface{}{
+		"name":     "bad",
+		"base_url": "http://example.com",
+		"api_key":  "sk-x",
+		"protocol": "grpc",
+	}
+	req := adminReq(t, http.MethodPost, "/api/upstreams", body)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid protocol, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPatchUpstream_UpdatesProtocol(t *testing.T) {
+	srv, db := setupAdminTestWithRealPool(t)
+	engine := srv.Engine()
+
+	// Seed an upstream with default protocol via the API.
+	createBody := map[string]interface{}{
+		"name": "to-update", "base_url": "http://x", "api_key": "sk",
+	}
+	createReq := adminReq(t, http.MethodPost, "/api/upstreams", createBody)
+	createResp := httptest.NewRecorder()
+	engine.ServeHTTP(createResp, createReq)
+	var created map[string]interface{}
+	json.NewDecoder(createResp.Body).Decode(&created)
+	id := uint(created["id"].(float64))
+
+	// Patch protocol and passthrough.
+	patchBody := map[string]interface{}{
+		"protocol":               "anthropic",
+		"passthrough_extensions": true,
+	}
+	patchReq := adminReq(t, http.MethodPatch, "/api/upstreams/"+itoa(int(id)), patchBody)
+	patchResp := httptest.NewRecorder()
+	engine.ServeHTTP(patchResp, patchReq)
+
+	if patchResp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", patchResp.Code, patchResp.Body.String())
+	}
+
+	var stored models.Upstream
+	db.First(&stored, id)
+	if stored.Protocol != models.ProtocolAnthropic {
+		t.Errorf("after patch protocol = %q, want anthropic", stored.Protocol)
+	}
+	if !stored.PassthroughExtensions {
+		t.Errorf("after patch passthrough_extensions = false, want true")
+	}
+}
+
+func TestPatchUpstream_InvalidProtocol(t *testing.T) {
+	srv, _ := setupAdminTestWithRealPool(t)
+	engine := srv.Engine()
+
+	createReq := adminReq(t, http.MethodPost, "/api/upstreams", map[string]interface{}{
+		"name": "u", "base_url": "http://x", "api_key": "sk",
+	})
+	createResp := httptest.NewRecorder()
+	engine.ServeHTTP(createResp, createReq)
+	var created map[string]interface{}
+	json.NewDecoder(createResp.Body).Decode(&created)
+	id := uint(created["id"].(float64))
+
+	patchReq := adminReq(t, http.MethodPatch, "/api/upstreams/"+itoa(int(id)), map[string]interface{}{
+		"protocol": "nope",
+	})
+	patchResp := httptest.NewRecorder()
+	engine.ServeHTTP(patchResp, patchReq)
+
+	if patchResp.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", patchResp.Code, patchResp.Body.String())
+	}
+}
+
+func itoa(i int) string {
+	return strconv.Itoa(i)
+}
