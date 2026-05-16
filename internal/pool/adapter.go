@@ -5,6 +5,22 @@ import (
 	"strings"
 )
 
+// NormalizeBaseURL ensures the base URL has an http(s) scheme. Bare
+// host:port values like "10.0.3.248:3000/api" fail url.Parse with
+// "first path segment in URL cannot contain colon", so we default to
+// http:// when no scheme is present.
+func NormalizeBaseURL(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	low := strings.ToLower(s)
+	if strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		return s
+	}
+	return "http://" + s
+}
+
 // ProviderAdapter constructs the full upstream URL from a base URL for each protocol.
 type ProviderAdapter interface {
 	AnthropicURL(baseURL string) string

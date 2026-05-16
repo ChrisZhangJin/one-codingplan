@@ -64,7 +64,7 @@ func New(db *gorm.DB, encKey []byte, cfg *Config) (*Pool, error) {
 			UpstreamEntry: UpstreamEntry{
 				ID:                    u.ID,
 				Name:                  u.Name,
-				BaseURL:               u.BaseURL,
+				BaseURL:               NormalizeBaseURL(u.BaseURL),
 				APIKey:                apiKey,
 				ModelOverride:         u.ModelOverride,
 				Protocol:              normalizeProtocol(u.Protocol),
@@ -206,7 +206,7 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, protoc
 	for i := range p.entries {
 		if p.entries[i].ID == id {
 			p.entries[i].Name = name
-			p.entries[i].BaseURL = baseURL
+			p.entries[i].BaseURL = NormalizeBaseURL(baseURL)
 			if apiKey != "" {
 				p.entries[i].APIKey = apiKey
 			}
@@ -227,7 +227,7 @@ func (p *Pool) AddEntry(id uint, name, baseURL, apiKey, modelOverride, protocol 
 		UpstreamEntry: UpstreamEntry{
 			ID:                    id,
 			Name:                  name,
-			BaseURL:               baseURL,
+			BaseURL:               NormalizeBaseURL(baseURL),
 			APIKey:                apiKey,
 			ModelOverride:         modelOverride,
 			Protocol:              normalizeProtocol(protocol),

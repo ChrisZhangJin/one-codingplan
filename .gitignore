@@ -8,3 +8,7 @@ web/dist/
 internal/server/web_dist/*
 !internal/server/web_dist/.gitkeep
 .planning/*
+.claude/
+one-codingplan.db
+one-codingplan.log
+

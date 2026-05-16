@@ -173,11 +173,11 @@ func (s *Server) handleRelay(c *gin.Context) {
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			pool.GetAdapter(current.Name).OpenAIURL(current.BaseURL),
-			bytes.NewReader(sendBody))
+		outURL := pool.GetAdapter(current.Name).OpenAIURL(current.BaseURL)
+		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost, outURL, bytes.NewReader(sendBody))
 		if err != nil {
 			cancel()
+			slog.Warn("upstream request build failed", "name", current.Name, "url", outURL, "err", err)
 			continue
 		}
 		outReq.Header = cloneHeaders(c.Request.Header)

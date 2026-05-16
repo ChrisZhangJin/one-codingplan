@@ -62,6 +62,27 @@ func TestMinimaxAdapterOpenAIURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeBaseURL(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"  ", ""},
+		{"http://x.com", "http://x.com"},
+		{"https://x.com", "https://x.com"},
+		{"HTTP://x.com", "HTTP://x.com"},
+		{"10.0.3.248:3000/api", "http://10.0.3.248:3000/api"},
+		{"example.com/v1", "http://example.com/v1"},
+		{" https://x.com ", "https://x.com"},
+	}
+	for _, tt := range tests {
+		if got := NormalizeBaseURL(tt.in); got != tt.want {
+			t.Errorf("NormalizeBaseURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestGetAdapter(t *testing.T) {
 	tests := []struct {
 		provider string

@@ -11,6 +11,7 @@ import (
 
 	"one-codingplan/internal/crypto"
 	"one-codingplan/internal/models"
+	"one-codingplan/internal/pool"
 )
 
 func (s *Server) adminMiddleware(c *gin.Context) {
@@ -318,6 +319,8 @@ func (s *Server) handleCreateUpstream(c *gin.Context) {
 		return
 	}
 
+	req.BaseURL = pool.NormalizeBaseURL(req.BaseURL)
+
 	upstream := models.Upstream{
 		Name:                  req.Name,
 		BaseURL:               req.BaseURL,
@@ -390,7 +393,9 @@ func (s *Server) handleUpdateUpstream(c *gin.Context) {
 		updates["name"] = *req.Name
 	}
 	if req.BaseURL != nil {
-		updates["base_url"] = *req.BaseURL
+		normalized := pool.NormalizeBaseURL(*req.BaseURL)
+		req.BaseURL = &normalized
+		updates["base_url"] = normalized
 	}
 	if req.ModelOverride != nil {
 		updates["model_override"] = *req.ModelOverride

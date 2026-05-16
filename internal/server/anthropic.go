@@ -115,11 +115,11 @@ func (s *Server) handleAnthropicRelay(c *gin.Context) {
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 300*time.Second)
-		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			pool.GetAdapter(up.Name).AnthropicURL(up.BaseURL),
-			bytes.NewReader(sendBody))
+		outURL := pool.GetAdapter(up.Name).AnthropicURL(up.BaseURL)
+		outReq, err := http.NewRequestWithContext(ctx, http.MethodPost, outURL, bytes.NewReader(sendBody))
 		if err != nil {
 			cancel()
+			slog.Warn("anthropic upstream request build failed", "name", up.Name, "url", outURL, "err", err)
 			continue
 		}
 		outReq.Header = cloneHeaders(c.Request.Header)
