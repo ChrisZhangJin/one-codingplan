@@ -20,26 +20,38 @@ type accumToolCall struct {
 // for done events, maintains a monotonic sequence_number counter, and accumulates
 // tool call arguments across streaming chunks.
 type ResponsesStreamTranslator struct {
-	model       string
-	responseID  string
-	messageID   string
-	started     bool // text message output started
-	seqNum      int
-	accumulated []byte
-	buf         []byte
+	model         string
+	responseID    string
+	messageID     string
+	reasoningID   string
+	started       bool // text message output started
+	messageOutIdx int  // output_index assigned to the message item when text starts
+	seqNum        int
+	accumulated   []byte
+	buf           []byte
 	// tool call tracking
 	toolCalls    map[int]*accumToolCall
 	toolIdxToOut map[int]int // maps tool_calls stream index → output_index
-	nextOutIdx   int         // monotonically increments per tool call item
+	nextOutIdx   int         // monotonically increments per output item (reasoning, message, tool calls)
+	closed       bool        // true after emitClosing has run; guards against duplicate finalization
+	createdSent  bool        // true once response.created has been emitted
+	// reasoning (<think> ... </think>) tracking
+	reasoningStarted bool            // true after reasoning output_item.added emitted
+	reasoningDone    bool            // true after reasoning output_item.done emitted
+	reasoningOutIdx  int             // output_index assigned to the reasoning item
+	reasoningText    strings.Builder // accumulated reasoning text
+	inThink          bool            // currently inside <think>...</think>
+	thinkPending     strings.Builder // bytes that might be the start of a tag boundary; carry across chunks
 }
 
 // NewResponsesStreamTranslator creates a translator for converting OpenAI SSE chunks
 // to Responses API SSE event sequences.
 func NewResponsesStreamTranslator(model string) *ResponsesStreamTranslator {
 	return &ResponsesStreamTranslator{
-		model:      model,
-		responseID: "resp_proxy",
-		messageID:  "msg_proxy",
+		model:       model,
+		responseID:  "resp_proxy",
+		messageID:   "msg_proxy",
+		reasoningID: "rs_proxy",
 	}
 }
 
@@ -93,6 +105,22 @@ func (t *ResponsesStreamTranslator) translateFrame(frame []byte) ([][]byte, erro
 
 	var events [][]byte
 
+	// Handle text content
+	content := chunk.Choices[0].Delta.Content
+	finishReason := chunk.Choices[0].FinishReason
+
+	// response.created must precede any other event in the stream.
+	// Emit it on the first chunk that carries either tool calls or text.
+	hasToolDelta := len(chunk.Choices[0].Delta.ToolCalls) > 0
+	if !t.createdSent && (hasToolDelta || content != "") {
+		created, err := t.emitCreated()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, created)
+		t.createdSent = true
+	}
+
 	// Handle tool call deltas
 	for _, tc := range chunk.Choices[0].Delta.ToolCalls {
 		tcEvents, err := t.handleToolCallDelta(tc)
@@ -102,26 +130,12 @@ func (t *ResponsesStreamTranslator) translateFrame(frame []byte) ([][]byte, erro
 		events = append(events, tcEvents...)
 	}
 
-	// Handle text content
-	content := chunk.Choices[0].Delta.Content
-	finishReason := chunk.Choices[0].FinishReason
-
-	if content != "" && !t.started {
-		opening, err := t.emitOpening()
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, opening...)
-		t.started = true
-	}
-
 	if content != "" {
-		delta, err := t.emitDelta(content)
+		contentEvents, err := t.processContent(content)
 		if err != nil {
 			return nil, err
 		}
-		events = append(events, delta)
-		t.accumulated = append(t.accumulated, []byte(content)...)
+		events = append(events, contentEvents...)
 	}
 
 	if finishReason != nil && *finishReason != "" {
@@ -170,6 +184,7 @@ func (t *ResponsesStreamTranslator) handleToolCallDelta(tc openAIToolCallDelta) 
 			"item": map[string]interface{}{
 				"type":      "function_call",
 				"id":        accum.id,
+				"call_id":   accum.id,
 				"status":    "in_progress",
 				"name":      accum.name,
 				"arguments": "",
@@ -202,8 +217,8 @@ func (t *ResponsesStreamTranslator) handleToolCallDelta(tc openAIToolCallDelta) 
 	return events, nil
 }
 
-func (t *ResponsesStreamTranslator) emitOpening() ([][]byte, error) {
-	created, err := formatSSEEvent("response.created", map[string]interface{}{
+func (t *ResponsesStreamTranslator) emitCreated() ([]byte, error) {
+	return formatSSEEvent("response.created", map[string]interface{}{
 		"type": "response.created",
 		"response": map[string]interface{}{
 			"id":     t.responseID,
@@ -214,13 +229,15 @@ func (t *ResponsesStreamTranslator) emitOpening() ([][]byte, error) {
 		},
 		"sequence_number": t.nextSeq(),
 	})
-	if err != nil {
-		return nil, err
-	}
+}
+
+func (t *ResponsesStreamTranslator) emitTextOpening() ([][]byte, error) {
+	t.messageOutIdx = t.nextOutIdx
+	t.nextOutIdx++
 
 	itemAdded, err := formatSSEEvent("response.output_item.added", map[string]interface{}{
 		"type":         "response.output_item.added",
-		"output_index": 0,
+		"output_index": t.messageOutIdx,
 		"item": map[string]interface{}{
 			"id":      t.messageID,
 			"type":    "message",
@@ -237,7 +254,7 @@ func (t *ResponsesStreamTranslator) emitOpening() ([][]byte, error) {
 	partAdded, err := formatSSEEvent("response.content_part.added", map[string]interface{}{
 		"type":          "response.content_part.added",
 		"item_id":       t.messageID,
-		"output_index":  0,
+		"output_index":  t.messageOutIdx,
 		"content_index": 0,
 		"part": map[string]interface{}{
 			"type":        "output_text",
@@ -250,14 +267,14 @@ func (t *ResponsesStreamTranslator) emitOpening() ([][]byte, error) {
 		return nil, err
 	}
 
-	return [][]byte{created, itemAdded, partAdded}, nil
+	return [][]byte{itemAdded, partAdded}, nil
 }
 
 func (t *ResponsesStreamTranslator) emitDelta(text string) ([]byte, error) {
 	return formatSSEEvent("response.output_text.delta", map[string]interface{}{
 		"type":            "response.output_text.delta",
 		"item_id":         t.messageID,
-		"output_index":    0,
+		"output_index":    t.messageOutIdx,
 		"content_index":   0,
 		"delta":           text,
 		"sequence_number": t.nextSeq(),
@@ -267,32 +284,78 @@ func (t *ResponsesStreamTranslator) emitDelta(text string) ([]byte, error) {
 // emitClosing emits the appropriate closing event sequence.
 // If tool calls were accumulated, emits tool call completion events.
 // Otherwise emits text message completion events.
+// Upstreams send both a chunk with finish_reason and a trailing [DONE]; only
+// the first one emits — subsequent calls return nothing to avoid duplicate
+// response.completed events that confuse SSE state machines on the client.
 func (t *ResponsesStreamTranslator) emitClosing() ([][]byte, error) {
-	if len(t.toolCalls) > 0 {
-		return t.emitToolCallClosing()
+	if t.closed {
+		return nil, nil
 	}
-	return t.emitTextClosing()
+	t.closed = true
+
+	var events [][]byte
+	var outputItems []interface{}
+
+	// 1. Close reasoning first if still open (upstream ended mid-think with no </think>).
+	if t.reasoningStarted && !t.reasoningDone {
+		closeEvts, err := t.emitReasoningClose()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, closeEvts...)
+	}
+	if t.reasoningStarted {
+		outputItems = append(outputItems, t.reasoningOutputItem())
+	}
+
+	// 2. Close tool calls or message.
+	if len(t.toolCalls) > 0 {
+		toolEvts, toolItems, err := t.emitToolCallDoneEvents()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, toolEvts...)
+		outputItems = append(outputItems, toolItems...)
+	} else if t.started {
+		msgEvts, msgItem, err := t.emitMessageDoneEvents()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, msgEvts...)
+		outputItems = append(outputItems, msgItem)
+	}
+
+	// 3. Emit final response.completed with the assembled output.
+	completed, err := t.emitResponseCompleted(outputItems)
+	if err != nil {
+		return nil, err
+	}
+	events = append(events, completed)
+	return events, nil
 }
 
-func (t *ResponsesStreamTranslator) emitTextClosing() ([][]byte, error) {
+// emitMessageDoneEvents emits the text/content/item done events for the message
+// and returns those events plus the final message output item to include in
+// response.completed.
+func (t *ResponsesStreamTranslator) emitMessageDoneEvents() ([][]byte, map[string]interface{}, error) {
 	fullText := string(t.accumulated)
 
 	textDone, err := formatSSEEvent("response.output_text.done", map[string]interface{}{
 		"type":            "response.output_text.done",
 		"item_id":         t.messageID,
-		"output_index":    0,
+		"output_index":    t.messageOutIdx,
 		"content_index":   0,
 		"text":            fullText,
 		"sequence_number": t.nextSeq(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	partDone, err := formatSSEEvent("response.content_part.done", map[string]interface{}{
 		"type":          "response.content_part.done",
 		"item_id":       t.messageID,
-		"output_index":  0,
+		"output_index":  t.messageOutIdx,
 		"content_index": 0,
 		"part": map[string]interface{}{
 			"type":        "output_text",
@@ -302,71 +365,39 @@ func (t *ResponsesStreamTranslator) emitTextClosing() ([][]byte, error) {
 		"sequence_number": t.nextSeq(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	msgItem := map[string]interface{}{
+		"id":     t.messageID,
+		"type":   "message",
+		"status": "completed",
+		"role":   "assistant",
+		"content": []interface{}{
+			map[string]interface{}{
+				"type":        "output_text",
+				"text":        fullText,
+				"annotations": []interface{}{},
+			},
+		},
 	}
 
 	itemDone, err := formatSSEEvent("response.output_item.done", map[string]interface{}{
-		"type":         "response.output_item.done",
-		"output_index": 0,
-		"item": map[string]interface{}{
-			"id":     t.messageID,
-			"type":   "message",
-			"status": "completed",
-			"role":   "assistant",
-			"content": []interface{}{
-				map[string]interface{}{
-					"type":        "output_text",
-					"text":        fullText,
-					"annotations": []interface{}{},
-				},
-			},
-		},
+		"type":            "response.output_item.done",
+		"output_index":    t.messageOutIdx,
+		"item":            msgItem,
 		"sequence_number": t.nextSeq(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	completed, err := formatSSEEvent("response.completed", map[string]interface{}{
-		"type": "response.completed",
-		"response": map[string]interface{}{
-			"id":     t.responseID,
-			"object": "response",
-			"status": "completed",
-			"model":  t.model,
-			"output": []interface{}{
-				map[string]interface{}{
-					"type":   "message",
-					"id":     t.messageID,
-					"status": "completed",
-					"role":   "assistant",
-					"content": []interface{}{
-						map[string]interface{}{
-							"type":        "output_text",
-							"text":        fullText,
-							"annotations": []interface{}{},
-						},
-					},
-				},
-			},
-			"usage": map[string]int{
-				"input_tokens":  0,
-				"output_tokens": 0,
-				"total_tokens":  0,
-			},
-		},
-		"sequence_number": t.nextSeq(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return [][]byte{textDone, partDone, itemDone, completed}, nil
+	return [][]byte{textDone, partDone, itemDone}, msgItem, nil
 }
 
-// emitToolCallClosing emits done events for all accumulated tool calls plus response.completed.
-func (t *ResponsesStreamTranslator) emitToolCallClosing() ([][]byte, error) {
-	// Sort tool call indices for deterministic output order
+// emitToolCallDoneEvents emits arg/item done events for every accumulated tool call
+// and returns those events plus the list of function_call output items.
+func (t *ResponsesStreamTranslator) emitToolCallDoneEvents() ([][]byte, []interface{}, error) {
 	indices := make([]int, 0, len(t.toolCalls))
 	for idx := range t.toolCalls {
 		indices = append(indices, idx)
@@ -389,36 +420,40 @@ func (t *ResponsesStreamTranslator) emitToolCallClosing() ([][]byte, error) {
 			"sequence_number": t.nextSeq(),
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		itemDone, err := formatSSEEvent("response.output_item.done", map[string]interface{}{
-			"type":         "response.output_item.done",
-			"output_index": outIdx,
-			"item": map[string]interface{}{
-				"type":      "function_call",
-				"id":        accum.id,
-				"status":    "completed",
-				"name":      accum.name,
-				"arguments": args,
-			},
-			"sequence_number": t.nextSeq(),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		events = append(events, argsDone, itemDone)
-		outputItems = append(outputItems, map[string]interface{}{
+		fnItem := map[string]interface{}{
 			"type":      "function_call",
 			"id":        accum.id,
+			"call_id":   accum.id,
 			"status":    "completed",
 			"name":      accum.name,
 			"arguments": args,
+		}
+
+		itemDone, err := formatSSEEvent("response.output_item.done", map[string]interface{}{
+			"type":            "response.output_item.done",
+			"output_index":    outIdx,
+			"item":            fnItem,
+			"sequence_number": t.nextSeq(),
 		})
+		if err != nil {
+			return nil, nil, err
+		}
+
+		events = append(events, argsDone, itemDone)
+		outputItems = append(outputItems, fnItem)
 	}
 
-	completed, err := formatSSEEvent("response.completed", map[string]interface{}{
+	return events, outputItems, nil
+}
+
+func (t *ResponsesStreamTranslator) emitResponseCompleted(outputItems []interface{}) ([]byte, error) {
+	if outputItems == nil {
+		outputItems = []interface{}{}
+	}
+	return formatSSEEvent("response.completed", map[string]interface{}{
 		"type": "response.completed",
 		"response": map[string]interface{}{
 			"id":     t.responseID,
@@ -434,12 +469,230 @@ func (t *ResponsesStreamTranslator) emitToolCallClosing() ([][]byte, error) {
 		},
 		"sequence_number": t.nextSeq(),
 	})
+}
+
+// --- Inline <think>...</think> handling ---
+
+const (
+	thinkOpenTag  = "<think>"
+	thinkCloseTag = "</think>"
+)
+
+// processContent scans a content delta and dispatches each piece to either the
+// message text path or the reasoning path, depending on whether the cursor is
+// currently inside a <think>...</think> block. Tag halves split across SSE chunks
+// are buffered in t.thinkPending and joined on the next call.
+func (t *ResponsesStreamTranslator) processContent(content string) ([][]byte, error) {
+	t.thinkPending.WriteString(content)
+	buf := t.thinkPending.String()
+	t.thinkPending.Reset()
+
+	var events [][]byte
+	for {
+		if t.inThink {
+			if idx := strings.Index(buf, thinkCloseTag); idx >= 0 {
+				if idx > 0 {
+					events = append(events, t.emitReasoningDelta(buf[:idx]))
+				}
+				closeEvts, err := t.emitReasoningClose()
+				if err != nil {
+					return nil, err
+				}
+				events = append(events, closeEvts...)
+				t.inThink = false
+				buf = buf[idx+len(thinkCloseTag):]
+				continue
+			}
+			partial := partialTagSuffix(buf, thinkCloseTag)
+			safeLen := len(buf) - partial
+			if safeLen > 0 {
+				events = append(events, t.emitReasoningDelta(buf[:safeLen]))
+			}
+			if partial > 0 {
+				t.thinkPending.WriteString(buf[safeLen:])
+			}
+			return events, nil
+		}
+
+		// Outside a think block.
+		if idx := strings.Index(buf, thinkOpenTag); idx >= 0 {
+			if idx > 0 {
+				textEvts, err := t.emitTextChunk(buf[:idx])
+				if err != nil {
+					return nil, err
+				}
+				events = append(events, textEvts...)
+			}
+			openEvts, err := t.emitReasoningOpen()
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, openEvts...)
+			t.inThink = true
+			buf = buf[idx+len(thinkOpenTag):]
+			continue
+		}
+		partial := partialTagSuffix(buf, thinkOpenTag)
+		safeLen := len(buf) - partial
+		if safeLen > 0 {
+			textEvts, err := t.emitTextChunk(buf[:safeLen])
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, textEvts...)
+		}
+		if partial > 0 {
+			t.thinkPending.WriteString(buf[safeLen:])
+		}
+		return events, nil
+	}
+}
+
+// partialTagSuffix returns the length of the longest suffix of s that is a strict
+// prefix of needle. Used to hold back bytes that may yet complete an opening or
+// closing tag across chunk boundaries.
+func partialTagSuffix(s, needle string) int {
+	maxN := len(needle) - 1
+	if maxN > len(s) {
+		maxN = len(s)
+	}
+	for n := maxN; n > 0; n-- {
+		if strings.HasPrefix(needle, s[len(s)-n:]) {
+			return n
+		}
+	}
+	return 0
+}
+
+// emitTextChunk opens the message item if this is the first text, then emits a delta.
+func (t *ResponsesStreamTranslator) emitTextChunk(text string) ([][]byte, error) {
+	if text == "" {
+		return nil, nil
+	}
+	var events [][]byte
+	if !t.started {
+		opening, err := t.emitTextOpening()
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, opening...)
+		t.started = true
+	}
+	delta, err := t.emitDelta(text)
 	if err != nil {
 		return nil, err
 	}
-	events = append(events, completed)
-
+	events = append(events, delta)
+	t.accumulated = append(t.accumulated, []byte(text)...)
 	return events, nil
+}
+
+func (t *ResponsesStreamTranslator) emitReasoningOpen() ([][]byte, error) {
+	t.reasoningOutIdx = t.nextOutIdx
+	t.nextOutIdx++
+	t.reasoningStarted = true
+
+	itemAdded, err := formatSSEEvent("response.output_item.added", map[string]interface{}{
+		"type":         "response.output_item.added",
+		"output_index": t.reasoningOutIdx,
+		"item": map[string]interface{}{
+			"id":      t.reasoningID,
+			"type":    "reasoning",
+			"summary": []interface{}{},
+		},
+		"sequence_number": t.nextSeq(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	partAdded, err := formatSSEEvent("response.reasoning_summary_part.added", map[string]interface{}{
+		"type":          "response.reasoning_summary_part.added",
+		"item_id":       t.reasoningID,
+		"output_index":  t.reasoningOutIdx,
+		"summary_index": 0,
+		"part": map[string]interface{}{
+			"type": "summary_text",
+			"text": "",
+		},
+		"sequence_number": t.nextSeq(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return [][]byte{itemAdded, partAdded}, nil
+}
+
+func (t *ResponsesStreamTranslator) emitReasoningDelta(text string) []byte {
+	t.reasoningText.WriteString(text)
+	ev, _ := formatSSEEvent("response.reasoning_summary_text.delta", map[string]interface{}{
+		"type":            "response.reasoning_summary_text.delta",
+		"item_id":         t.reasoningID,
+		"output_index":    t.reasoningOutIdx,
+		"summary_index":   0,
+		"delta":           text,
+		"sequence_number": t.nextSeq(),
+	})
+	return ev
+}
+
+func (t *ResponsesStreamTranslator) emitReasoningClose() ([][]byte, error) {
+	if t.reasoningDone {
+		return nil, nil
+	}
+	t.reasoningDone = true
+	fullText := t.reasoningText.String()
+
+	textDone, err := formatSSEEvent("response.reasoning_summary_text.done", map[string]interface{}{
+		"type":            "response.reasoning_summary_text.done",
+		"item_id":         t.reasoningID,
+		"output_index":    t.reasoningOutIdx,
+		"summary_index":   0,
+		"text":            fullText,
+		"sequence_number": t.nextSeq(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	partDone, err := formatSSEEvent("response.reasoning_summary_part.done", map[string]interface{}{
+		"type":          "response.reasoning_summary_part.done",
+		"item_id":       t.reasoningID,
+		"output_index":  t.reasoningOutIdx,
+		"summary_index": 0,
+		"part": map[string]interface{}{
+			"type": "summary_text",
+			"text": fullText,
+		},
+		"sequence_number": t.nextSeq(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	itemDone, err := formatSSEEvent("response.output_item.done", map[string]interface{}{
+		"type":            "response.output_item.done",
+		"output_index":    t.reasoningOutIdx,
+		"item":            t.reasoningOutputItem(),
+		"sequence_number": t.nextSeq(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return [][]byte{textDone, partDone, itemDone}, nil
+}
+
+func (t *ResponsesStreamTranslator) reasoningOutputItem() map[string]interface{} {
+	return map[string]interface{}{
+		"id":   t.reasoningID,
+		"type": "reasoning",
+		"summary": []interface{}{
+			map[string]interface{}{
+				"type": "summary_text",
+				"text": t.reasoningText.String(),
+			},
+		},
+	}
 }
 
 // Ensure fmt is used (for formatSSEEvent usage pattern matching stream.go).

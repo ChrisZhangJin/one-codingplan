@@ -85,6 +85,11 @@ func TestResponsesStream_FirstChunk(t *testing.T) {
 		t.Errorf("expected delta=Hello, got %v", deltaEv["delta"])
 	}
 
+	// response.created must be the first event
+	if parsed[0]["type"] != "response.created" {
+		t.Errorf("expected first event response.created, got %v", parsed[0]["type"])
+	}
+
 	// sequence_numbers must be monotonically increasing starting from 0
 	for i := 1; i < len(parsed); i++ {
 		if seqNum(parsed[i]) <= seqNum(parsed[i-1]) {
@@ -254,8 +259,14 @@ func TestResponsesStream_ToolCallDelta(t *testing.T) {
 	}
 	parsed1 := parseSSEEvents(t, events1)
 	types1 := eventTypes(parsed1)
-	if len(types1) != 1 || types1[0] != "response.output_item.added" {
-		t.Fatalf("expected [response.output_item.added], got %v", types1)
+	wantTypes1 := []string{"response.created", "response.output_item.added"}
+	if len(types1) != len(wantTypes1) {
+		t.Fatalf("expected %v, got %v", wantTypes1, types1)
+	}
+	for i, want := range wantTypes1 {
+		if types1[i] != want {
+			t.Errorf("event[%d]: want %q, got %q", i, want, types1[i])
+		}
 	}
 
 	// Second chunk: argument delta
@@ -320,6 +331,310 @@ func TestResponsesStream_ToolCallDelta(t *testing.T) {
 			t.Errorf("sequence_number not monotonically increasing at index %d: %d <= %d",
 				i, seqNum(allParsed[i]), seqNum(allParsed[i-1]))
 		}
+	}
+}
+
+func TestResponsesStream_FinishReasonThenDoneEmitsCloseOnce(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"content":"Hi"}}]}` + "\n\n")) //nolint:errcheck
+
+	finishEvents, err := tr.Translate([]byte(`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}` + "\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error on finish chunk: %v", err)
+	}
+	finishParsed := parseSSEEvents(t, finishEvents)
+	if got := countCompleted(finishParsed); got != 1 {
+		t.Fatalf("expected exactly 1 response.completed on finish_reason, got %d", got)
+	}
+
+	doneEvents, err := tr.Translate([]byte("data: [DONE]\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error on [DONE]: %v", err)
+	}
+	if len(doneEvents) != 0 {
+		t.Fatalf("expected [DONE] after finish_reason to emit no events, got %d: %v",
+			len(doneEvents), eventTypes(parseSSEEvents(t, doneEvents)))
+	}
+}
+
+func TestResponsesStream_ToolCallFinishThenDoneEmitsCloseOnce(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"bash","arguments":""}}]}}]}` + "\n\n"))                  //nolint:errcheck
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"cmd\":\"ls\"}"}}]}}]}` + "\n\n"))                                              //nolint:errcheck
+	finishEvents, err := tr.Translate([]byte(`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}` + "\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error on finish chunk: %v", err)
+	}
+	finishParsed := parseSSEEvents(t, finishEvents)
+	if got := countCompleted(finishParsed); got != 1 {
+		t.Fatalf("expected exactly 1 response.completed on tool_calls finish, got %d", got)
+	}
+
+	doneEvents, err := tr.Translate([]byte("data: [DONE]\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error on [DONE]: %v", err)
+	}
+	if len(doneEvents) != 0 {
+		t.Fatalf("expected [DONE] after tool_calls finish to emit no events, got %d: %v",
+			len(doneEvents), eventTypes(parseSSEEvents(t, doneEvents)))
+	}
+}
+
+func TestResponsesStream_ToolCallEventsCarryCallID(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"bash","arguments":""}}]}}]}` + "\n\n")) //nolint:errcheck
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"cmd\":\"ls\"}"}}]}}]}` + "\n\n"))                                //nolint:errcheck
+	closingEvents, err := tr.Translate([]byte(`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}` + "\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tr2 := NewResponsesStreamTranslator("gpt-4")
+	openEvents, _ := tr2.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"bash","arguments":""}}]}}]}` + "\n\n"))
+	openParsed := parseSSEEvents(t, openEvents)
+	var added map[string]interface{}
+	for _, ev := range openParsed {
+		if ev["type"] == "response.output_item.added" {
+			added = ev
+			break
+		}
+	}
+	if added == nil {
+		t.Fatalf("missing response.output_item.added in %v", eventTypes(openParsed))
+	}
+	addedItem := added["item"].(map[string]interface{})
+	if addedItem["call_id"] != "call_abc123" {
+		t.Errorf("output_item.added: expected call_id=call_abc123, got %v", addedItem["call_id"])
+	}
+
+	closingParsed := parseSSEEvents(t, closingEvents)
+	var done, completed map[string]interface{}
+	for _, ev := range closingParsed {
+		switch ev["type"] {
+		case "response.output_item.done":
+			done = ev
+		case "response.completed":
+			completed = ev
+		}
+	}
+	if done == nil || completed == nil {
+		t.Fatalf("missing output_item.done or response.completed in %v", eventTypes(closingParsed))
+	}
+
+	doneItem := done["item"].(map[string]interface{})
+	if doneItem["call_id"] != "call_abc123" {
+		t.Errorf("output_item.done: expected call_id=call_abc123, got %v", doneItem["call_id"])
+	}
+
+	resp := completed["response"].(map[string]interface{})
+	output := resp["output"].([]interface{})
+	completedItem := output[0].(map[string]interface{})
+	if completedItem["call_id"] != "call_abc123" {
+		t.Errorf("response.completed output[0]: expected call_id=call_abc123, got %v", completedItem["call_id"])
+	}
+}
+
+func TestResponsesStream_ToolCallFirstEmitsCreated(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+
+	chunk := []byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"bash","arguments":""}}]}}]}` + "\n\n")
+	events, err := tr.Translate(chunk)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	parsed := parseSSEEvents(t, events)
+	if len(parsed) == 0 || parsed[0]["type"] != "response.created" {
+		t.Fatalf("expected first event response.created on tool-call-first stream, got %v", eventTypes(parsed))
+	}
+	if seqNum(parsed[0]) != 0 {
+		t.Errorf("expected response.created sequence_number=0, got %d", seqNum(parsed[0]))
+	}
+}
+
+func countCompleted(parsed []map[string]interface{}) int {
+	n := 0
+	for _, m := range parsed {
+		if m["type"] == "response.completed" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestResponsesStream_ThinkBlockBecomesReasoningSummary(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+	chunks := [][]byte{
+		[]byte(`data: {"choices":[{"delta":{"content":"<think>"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{"content":"weighing options"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{"content":"</think>"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{"content":"Hello"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}` + "\n\n"),
+	}
+	var all []map[string]interface{}
+	for _, c := range chunks {
+		evs, err := tr.Translate(c)
+		if err != nil {
+			t.Fatalf("translate err: %v", err)
+		}
+		all = append(all, parseSSEEvents(t, evs)...)
+	}
+
+	gotTypes := eventTypes(all)
+	wantOrder := []string{
+		"response.created",
+		"response.output_item.added",            // reasoning
+		"response.reasoning_summary_part.added", //
+		"response.reasoning_summary_text.delta", // "weighing options"
+		"response.reasoning_summary_text.done",
+		"response.reasoning_summary_part.done",
+		"response.output_item.done",       // reasoning
+		"response.output_item.added",      // message
+		"response.content_part.added",     //
+		"response.output_text.delta",      // "Hello"
+		"response.output_text.done",
+		"response.content_part.done",
+		"response.output_item.done", // message
+		"response.completed",
+	}
+	if len(gotTypes) != len(wantOrder) {
+		t.Fatalf("event count: want %d, got %d (%v)", len(wantOrder), len(gotTypes), gotTypes)
+	}
+	for i, want := range wantOrder {
+		if gotTypes[i] != want {
+			t.Errorf("event[%d]: want %q, got %q (full: %v)", i, want, gotTypes[i], gotTypes)
+		}
+	}
+
+	// Reasoning delta payload
+	for _, ev := range all {
+		if ev["type"] == "response.reasoning_summary_text.delta" {
+			if ev["delta"] != "weighing options" {
+				t.Errorf("reasoning delta: want 'weighing options', got %v", ev["delta"])
+			}
+		}
+	}
+
+	// Message text must NOT contain the literal <think> tags
+	for _, ev := range all {
+		if ev["type"] == "response.output_text.delta" {
+			if s, _ := ev["delta"].(string); strings.Contains(s, "<think>") || strings.Contains(s, "</think>") {
+				t.Errorf("message delta leaked think tags: %q", s)
+			}
+		}
+	}
+
+	// response.completed output[] must include reasoning then message
+	var completed map[string]interface{}
+	for _, ev := range all {
+		if ev["type"] == "response.completed" {
+			completed = ev
+		}
+	}
+	if completed == nil {
+		t.Fatal("missing response.completed")
+	}
+	resp := completed["response"].(map[string]interface{})
+	output := resp["output"].([]interface{})
+	if len(output) != 2 {
+		t.Fatalf("expected 2 output items (reasoning, message), got %d: %+v", len(output), output)
+	}
+	if output[0].(map[string]interface{})["type"] != "reasoning" {
+		t.Errorf("output[0] type: want reasoning, got %v", output[0])
+	}
+	if output[1].(map[string]interface{})["type"] != "message" {
+		t.Errorf("output[1] type: want message, got %v", output[1])
+	}
+}
+
+func TestResponsesStream_ThinkTagSplitAcrossChunks(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+	chunks := [][]byte{
+		[]byte(`data: {"choices":[{"delta":{"content":"<thi"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{"content":"nk>plan</thi"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{"content":"nk>done"}}]}` + "\n\n"),
+		[]byte(`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}` + "\n\n"),
+	}
+	var all []map[string]interface{}
+	for _, c := range chunks {
+		evs, _ := tr.Translate(c)
+		all = append(all, parseSSEEvents(t, evs)...)
+	}
+
+	var reasoningText strings.Builder
+	var messageText strings.Builder
+	for _, ev := range all {
+		switch ev["type"] {
+		case "response.reasoning_summary_text.delta":
+			reasoningText.WriteString(ev["delta"].(string))
+		case "response.output_text.delta":
+			messageText.WriteString(ev["delta"].(string))
+		}
+	}
+	if reasoningText.String() != "plan" {
+		t.Errorf("reasoning text: want 'plan', got %q", reasoningText.String())
+	}
+	if messageText.String() != "done" {
+		t.Errorf("message text: want 'done', got %q", messageText.String())
+	}
+	if strings.Contains(messageText.String(), "<") || strings.Contains(reasoningText.String(), "<") {
+		t.Errorf("tag leakage: reasoning=%q message=%q", reasoningText.String(), messageText.String())
+	}
+}
+
+func TestResponsesStream_ThinkBeforeToolCall(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"content":"<think>route to bash</think>"}}]}` + "\n\n")) //nolint:errcheck
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"bash","arguments":""}}]}}]}` + "\n\n")) //nolint:errcheck
+	finishEvts, _ := tr.Translate([]byte(`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}` + "\n\n"))
+	parsed := parseSSEEvents(t, finishEvts)
+
+	var completed map[string]interface{}
+	for _, ev := range parsed {
+		if ev["type"] == "response.completed" {
+			completed = ev
+		}
+	}
+	if completed == nil {
+		t.Fatal("missing response.completed in finish events")
+	}
+	resp := completed["response"].(map[string]interface{})
+	output := resp["output"].([]interface{})
+	if len(output) != 2 {
+		t.Fatalf("expected reasoning + function_call (2 items), got %d", len(output))
+	}
+	if output[0].(map[string]interface{})["type"] != "reasoning" {
+		t.Errorf("output[0]: want reasoning, got %v", output[0])
+	}
+	if output[1].(map[string]interface{})["type"] != "function_call" {
+		t.Errorf("output[1]: want function_call, got %v", output[1])
+	}
+}
+
+func TestResponsesStream_UnclosedThinkClosesOnFinish(t *testing.T) {
+	tr := NewResponsesStreamTranslator("gpt-4")
+	tr.Translate([]byte(`data: {"choices":[{"delta":{"content":"<think>cut off"}}]}` + "\n\n")) //nolint:errcheck
+	finishEvts, _ := tr.Translate([]byte(`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}` + "\n\n"))
+	parsed := parseSSEEvents(t, finishEvts)
+	types := eventTypes(parsed)
+
+	// Must emit reasoning_summary_text.done before response.completed
+	doneIdx, completedIdx := -1, -1
+	for i, ty := range types {
+		if ty == "response.reasoning_summary_text.done" {
+			doneIdx = i
+		}
+		if ty == "response.completed" {
+			completedIdx = i
+		}
+	}
+	if doneIdx < 0 {
+		t.Fatalf("expected reasoning_summary_text.done in finish events, got %v", types)
+	}
+	if completedIdx < 0 || completedIdx < doneIdx {
+		t.Fatalf("expected response.completed after reasoning close, got %v", types)
 	}
 }
 

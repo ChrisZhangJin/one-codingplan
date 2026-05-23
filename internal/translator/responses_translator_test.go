@@ -2,6 +2,7 @@ package translator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -134,6 +135,108 @@ func TestResponsesRequestToOpenAI_FunctionCallItem(t *testing.T) {
 	}
 	if m.ToolCalls[0].ID != "call_abc" || m.ToolCalls[0].Function.Name != "bash" {
 		t.Errorf("unexpected tool call: %+v", m.ToolCalls[0])
+	}
+	if m.ReasoningContent == nil || *m.ReasoningContent != "" {
+		t.Errorf("expected reasoning_content to be set to empty string (DeepSeek thinking-mode compat), got %v", m.ReasoningContent)
+	}
+
+	// Verify the JSON serialization actually contains "reasoning_content":""
+	body, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(body), `"reasoning_content":""`) {
+		t.Errorf("expected serialized message to contain reasoning_content:\"\", got %s", body)
+	}
+}
+
+func TestResponsesRequestToOpenAI_PassesMaxOutputTokens(t *testing.T) {
+	req := &ResponsesRequest{Model: "qwen-max", MaxOutputTokens: 8192}
+	out := ResponsesRequestToOpenAI(req, nil, "")
+	if out.MaxTokens != 8192 {
+		t.Errorf("expected max_tokens=8192 (passthrough), got %d", out.MaxTokens)
+	}
+}
+
+func TestResponsesRequestToOpenAI_DefaultsMaxTokensWhenAbsent(t *testing.T) {
+	req := &ResponsesRequest{Model: "qwen-max"}
+	out := ResponsesRequestToOpenAI(req, nil, "")
+	if out.MaxTokens != 16384 {
+		t.Errorf("expected default max_tokens=16384, got %d", out.MaxTokens)
+	}
+}
+
+func TestResponsesRequestToOpenAI_MergesConsecutiveFunctionCalls(t *testing.T) {
+	req := &ResponsesRequest{Model: "qwen-max"}
+	msgs := []ResponsesInputMessage{
+		{Role: "user", Content: json.RawMessage(`"go"`)},
+		{Type: "function_call", ID: "call_a", CallID: "call_a", Name: "bash", Arguments: `{"cmd":"ls"}`},
+		{Type: "function_call", ID: "call_b", CallID: "call_b", Name: "bash", Arguments: `{"cmd":"pwd"}`},
+		{Type: "function_call_output", CallID: "call_a", Output: "file1"},
+		{Type: "function_call_output", CallID: "call_b", Output: "/tmp"},
+	}
+	out := ResponsesRequestToOpenAI(req, msgs, "")
+	if len(out.Messages) != 4 {
+		t.Fatalf("expected 4 messages (user, merged assistant, tool, tool), got %d: %+v", len(out.Messages), out.Messages)
+	}
+
+	if out.Messages[0].Role != "user" {
+		t.Errorf("messages[0]: expected role=user, got %q", out.Messages[0].Role)
+	}
+
+	assistant := out.Messages[1]
+	if assistant.Role != "assistant" {
+		t.Fatalf("messages[1]: expected role=assistant, got %q", assistant.Role)
+	}
+	if len(assistant.ToolCalls) != 2 {
+		t.Fatalf("messages[1]: expected 2 merged tool_calls, got %d", len(assistant.ToolCalls))
+	}
+	if assistant.ToolCalls[0].ID != "call_a" || assistant.ToolCalls[1].ID != "call_b" {
+		t.Errorf("merged tool_calls order: got %q, %q", assistant.ToolCalls[0].ID, assistant.ToolCalls[1].ID)
+	}
+	if assistant.ReasoningContent == nil || *assistant.ReasoningContent != "" {
+		t.Errorf("merged assistant: expected reasoning_content set to empty string, got %v", assistant.ReasoningContent)
+	}
+
+	if out.Messages[2].Role != "tool" || out.Messages[2].ToolCallID != "call_a" {
+		t.Errorf("messages[2]: expected tool/call_a, got role=%q tool_call_id=%q", out.Messages[2].Role, out.Messages[2].ToolCallID)
+	}
+	if out.Messages[3].Role != "tool" || out.Messages[3].ToolCallID != "call_b" {
+		t.Errorf("messages[3]: expected tool/call_b, got role=%q tool_call_id=%q", out.Messages[3].Role, out.Messages[3].ToolCallID)
+	}
+}
+
+func TestResponsesRequestToOpenAI_DoesNotMergeAcrossToolResult(t *testing.T) {
+	req := &ResponsesRequest{Model: "qwen-max"}
+	msgs := []ResponsesInputMessage{
+		{Type: "function_call", ID: "call_a", CallID: "call_a", Name: "bash", Arguments: `{"cmd":"ls"}`},
+		{Type: "function_call_output", CallID: "call_a", Output: "file1"},
+		{Type: "function_call", ID: "call_b", CallID: "call_b", Name: "bash", Arguments: `{"cmd":"pwd"}`},
+		{Type: "function_call_output", CallID: "call_b", Output: "/tmp"},
+	}
+	out := ResponsesRequestToOpenAI(req, msgs, "")
+	if len(out.Messages) != 4 {
+		t.Fatalf("expected 4 messages (assistant, tool, assistant, tool), got %d", len(out.Messages))
+	}
+	for i, want := range []string{"assistant", "tool", "assistant", "tool"} {
+		if out.Messages[i].Role != want {
+			t.Errorf("messages[%d]: expected role=%q, got %q", i, want, out.Messages[i].Role)
+		}
+	}
+	if len(out.Messages[0].ToolCalls) != 1 || len(out.Messages[2].ToolCalls) != 1 {
+		t.Errorf("expected each assistant to keep its single tool_call, got %d and %d",
+			len(out.Messages[0].ToolCalls), len(out.Messages[2].ToolCalls))
+	}
+}
+
+func TestResponsesRequestToOpenAI_FunctionCallItem_PrefersCallID(t *testing.T) {
+	req := &ResponsesRequest{Model: "qwen-max"}
+	msgs := []ResponsesInputMessage{
+		{Type: "function_call", ID: "fc_item123", CallID: "call_round_trip", Name: "bash", Arguments: `{}`},
+	}
+	out := ResponsesRequestToOpenAI(req, msgs, "")
+	if out.Messages[0].ToolCalls[0].ID != "call_round_trip" {
+		t.Errorf("expected tool_calls[0].id=call_round_trip (from CallID), got %q", out.Messages[0].ToolCalls[0].ID)
 	}
 }
 

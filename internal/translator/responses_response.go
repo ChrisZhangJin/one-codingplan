@@ -22,6 +22,7 @@ func OpenAIToResponsesAPI(resp *OpenAIResponse, requestModel string) *ResponsesR
 				output = append(output, ResponsesOutput{
 					Type:      "function_call",
 					ID:        tc.ID,
+					CallID:    tc.ID,
 					Status:    "completed",
 					Name:      tc.Function.Name,
 					Arguments: tc.Function.Arguments,

@@ -64,10 +64,14 @@ type OpenAIRequest struct {
 }
 
 type OpenAIMessage struct {
-	Role       string          `json:"role"`
-	Content    string          `json:"content,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
 	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	// ReasoningContent is the assistant's chain-of-thought, required by DeepSeek
+	// thinking-mode models on assistant messages that contain tool_calls. Pointer
+	// semantics let us emit an explicit empty string (omitted entirely when nil).
+	ReasoningContent *string `json:"reasoning_content,omitempty"`
 }
 
 type OpenAIToolCall struct {
@@ -112,11 +116,12 @@ type OpenAIUsage struct {
 // --- Responses API types (OpenAI Responses API for Codex) ---
 
 type ResponsesRequest struct {
-	Model        string          `json:"model"`
-	Input        json.RawMessage `json:"input"`
-	Instructions string          `json:"instructions,omitempty"`
-	Stream       bool            `json:"stream,omitempty"`
-	Tools        []ResponsesTool `json:"tools,omitempty"`
+	Model           string          `json:"model"`
+	Input           json.RawMessage `json:"input"`
+	Instructions    string          `json:"instructions,omitempty"`
+	Stream          bool            `json:"stream,omitempty"`
+	Tools           []ResponsesTool `json:"tools,omitempty"`
+	MaxOutputTokens int             `json:"max_output_tokens,omitempty"`
 }
 
 // ResponsesTool is a tool definition in Responses API format (flat, not nested like chat completions).
@@ -181,15 +186,16 @@ type ResponsesResponse struct {
 }
 
 type ResponsesOutput struct {
-	Type    string                 `json:"type"`
-	ID      string                 `json:"id,omitempty"`
-	Status  string                 `json:"status,omitempty"`
+	Type   string `json:"type"`
+	ID     string `json:"id,omitempty"`
+	Status string `json:"status,omitempty"`
 	// For "message" type
 	Role    string                 `json:"role,omitempty"`
 	Content []ResponsesContentPart `json:"content,omitempty"`
 	// For "function_call" type
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	CallID    string `json:"call_id,omitempty"`
 }
 
 type ResponsesContentPart struct {

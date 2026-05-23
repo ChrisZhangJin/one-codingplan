@@ -70,11 +70,22 @@ func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessag
 		// Skip non-function built-in tools (computer_use_preview, web_search_preview, etc.)
 	}
 
+	// Forward an explicit max_tokens to the upstream. Codex may omit it for many
+	// models; providers like MiniMax-M2.5 then apply a small built-in cap that
+	// truncates long answers (especially when a <think> block has eaten budget).
+	// Default to 16384 when codex doesn't supply one — well under common 32K
+	// hard limits while large enough to avoid premature stop on real answers.
+	maxTokens := req.MaxOutputTokens
+	if maxTokens == 0 {
+		maxTokens = 16384
+	}
+
 	return OpenAIRequest{
-		Model:    model,
-		Messages: mergeSystemMessages(messages),
-		Stream:   req.Stream,
-		Tools:    tools,
+		Model:     model,
+		Messages:  mergeAssistantToolCalls(mergeSystemMessages(messages)),
+		Stream:    req.Stream,
+		Tools:     tools,
+		MaxTokens: maxTokens,
 	}
 }
 
@@ -84,11 +95,24 @@ func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessag
 func convertResponsesItem(m ResponsesInputMessage) []OpenAIMessage {
 	switch m.Type {
 	case "function_call":
-		// Assistant's tool call stored in conversation history
+		// Assistant's tool call stored in conversation history.
+		// Prefer call_id (the round-trip id codex echoes back in function_call_output)
+		// over the item id, so the assistant's tool_calls.id matches the subsequent
+		// tool message's tool_call_id at the upstream.
+		toolCallID := m.CallID
+		if toolCallID == "" {
+			toolCallID = m.ID
+		}
+		// DeepSeek thinking-mode models require reasoning_content on every assistant
+		// message that carries tool_calls; without it the API rejects with 400. Codex
+		// doesn't preserve the original chain-of-thought, so inject an empty string
+		// — proven workaround upstream (hermes-agent, claude-code-router, opencode).
+		empty := ""
 		return []OpenAIMessage{{
-			Role: "assistant",
+			Role:             "assistant",
+			ReasoningContent: &empty,
 			ToolCalls: []OpenAIToolCall{{
-				ID:   m.ID,
+				ID:   toolCallID,
 				Type: "function",
 				Function: OpenAIFunctionCall{
 					Name:      m.Name,
@@ -169,6 +193,31 @@ func convertContentParts(role string, parts []ResponsesContentPart) []OpenAIMess
 	flushText()
 
 	return msgs
+}
+
+// mergeAssistantToolCalls collapses consecutive assistant messages that only carry
+// tool_calls into a single assistant message with multiple tool_calls. The Responses
+// API emits each function_call as its own item, but Chat Completions requires every
+// assistant message with tool_calls to be immediately followed by tool messages
+// answering each tool_call_id — back-to-back assistant tool_call messages produce a
+// 400 "insufficient tool messages following tool_calls message" upstream.
+func mergeAssistantToolCalls(msgs []OpenAIMessage) []OpenAIMessage {
+	var out []OpenAIMessage
+	for _, m := range msgs {
+		canMerge := m.Role == "assistant" &&
+			m.Content == "" &&
+			len(m.ToolCalls) > 0 &&
+			len(out) > 0 &&
+			out[len(out)-1].Role == "assistant" &&
+			out[len(out)-1].Content == "" &&
+			len(out[len(out)-1].ToolCalls) > 0
+		if canMerge {
+			out[len(out)-1].ToolCalls = append(out[len(out)-1].ToolCalls, m.ToolCalls...)
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // mergeSystemMessages collapses consecutive system messages into one,
