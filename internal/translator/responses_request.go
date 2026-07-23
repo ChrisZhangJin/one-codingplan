@@ -71,7 +71,7 @@ func ResponsesRequestToOpenAI(req *ResponsesRequest, msgs []ResponsesInputMessag
 	}
 
 	// Forward an explicit max_tokens to the upstream. Codex may omit it for many
-	// models; providers like MiniMax-M2.5 then apply a small built-in cap that
+	// models; providers like MiniMax-M3 then apply a small built-in cap that
 	// truncates long answers (especially when a <think> block has eaten budget).
 	// Default to 16384 when codex doesn't supply one — well under common 32K
 	// hard limits while large enough to avoid premature stop on real answers.

@@ -16,7 +16,7 @@ ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo an
 
 | Provider | Base URL | Notes |
 |----------|----------|-------|
-| Minimax | `https://api.minimaxi.com` | Model: `MiniMax-M2.5` |
+| Minimax | `https://api.minimaxi.com` | Model: `MiniMax-M3` |
 | Mimo | `https://token-plan-cn.xiaomimimo.com` | Model: `mimo-v2-pro` |
 | Kimi | `https://api.kimi.com/coding` | Requires `User-Agent: claude-code/1.0.0` |
 | Qwen | `https://dashscope.aliyuncs.com` | Alibaba Cloud |

@@ -113,6 +113,11 @@ func translateContentBlocks(role string, blocks []interface{}) ([]OpenAIMessage,
 	}
 
 	// Flush accumulated text and tool_calls into an assistant/user message.
+	// Assistant messages: prepend, so the text/tool_calls precede any tool_result
+	// messages (which only appear on user roles in practice, but defensive here).
+	// User messages: append, so role:tool messages emitted from tool_result blocks
+	// stay immediately adjacent to the prior assistant.tool_calls — OpenAI requires
+	// every tool_call_id to be answered by a tool message before any other role.
 	if len(textParts) > 0 || len(toolCalls) > 0 {
 		var combined string
 		for _, t := range textParts {
@@ -121,8 +126,18 @@ func translateContentBlocks(role string, blocks []interface{}) ([]OpenAIMessage,
 		msg := OpenAIMessage{Role: role, Content: combined}
 		if len(toolCalls) > 0 {
 			msg.ToolCalls = toolCalls
+			// DeepSeek thinking-mode requires reasoning_content on every
+			// assistant message that carries tool_calls. Anthropic clients
+			// don't supply it, so we emit an empty placeholder — DeepSeek
+			// accepts that, and other OpenAI upstreams ignore the field.
+			empty := ""
+			msg.ReasoningContent = &empty
 		}
-		msgs = append([]OpenAIMessage{msg}, msgs...)
+		if role == "assistant" {
+			msgs = append([]OpenAIMessage{msg}, msgs...)
+		} else {
+			msgs = append(msgs, msg)
+		}
 	} else if len(msgs) == 0 {
 		// Empty content array — emit an empty message so the messages array is not missing.
 		msgs = append(msgs, OpenAIMessage{Role: role})

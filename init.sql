@@ -18,7 +18,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS `idx_upstreams_name` ON `upstreams`(`name`);
 
 -- Upstream seed data (api_key_enc left null — set real keys via portal or PATCH /api/upstreams/:id)
 INSERT OR IGNORE INTO `upstreams` (`name`, `base_url`, `api_key_enc`, `enabled`, `model_override`, `protocol`, `created_at`, `updated_at`) VALUES
-  ('minimax', 'https://api.minimaxi.com',                    NULL, 0, 'MiniMax-M2.5', 'both',     datetime('now'), datetime('now')),
+  ('minimax', 'https://api.minimaxi.com',                    NULL, 0, 'MiniMax-M3',   'both',     datetime('now'), datetime('now')),
   ('kimi',    'https://api.kimi.com/coding',                 NULL, 0, '',             'both',     datetime('now'), datetime('now')),
   ('qwen',    'https://dashscope.aliyuncs.com',              NULL, 0, '',             'openai',   datetime('now'), datetime('now')),
   ('mimo',    'https://token-plan-cn.xiaomimimo.com',        NULL, 0, 'mimo-v2-pro',  'both',     datetime('now'), datetime('now')),

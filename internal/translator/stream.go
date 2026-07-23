@@ -11,12 +11,30 @@ import (
 type StreamTranslator struct {
 	model   string
 	started bool
+	closed  bool
 	buf     []byte
+	// textIndex is the Anthropic content_block index used for the assistant text
+	// block, or -1 when no text block has been opened yet.
+	textIndex int
+	textOpen  bool
+	// toolIndexes maps an OpenAI tool_calls[].index to the Anthropic content_block
+	// index that was opened for that tool. Entries persist until message close.
+	toolIndexes map[int]int
+	// toolOpen tracks whether the Anthropic tool_use block for an OpenAI tool_call
+	// index is currently open (between content_block_start and content_block_stop).
+	toolOpen map[int]bool
+	// nextIndex is the next Anthropic content_block index to assign.
+	nextIndex int
 }
 
 // NewStreamTranslator creates a StreamTranslator that echoes originalModel in message_start (D-03).
 func NewStreamTranslator(originalModel string) *StreamTranslator {
-	return &StreamTranslator{model: originalModel}
+	return &StreamTranslator{
+		model:       originalModel,
+		textIndex:   -1,
+		toolIndexes: make(map[int]int),
+		toolOpen:    make(map[int]bool),
+	}
 }
 
 // Translate accepts raw upstream bytes and returns 0+ complete Anthropic SSE event byte slices.
@@ -64,7 +82,6 @@ type openAIStreamChunk struct {
 func (st *StreamTranslator) translateFrame(frame []byte) ([][]byte, error) {
 	// Strip leading/trailing whitespace lines and extract the data line.
 	line := bytes.TrimSpace(frame)
-	// Handle multi-line frames: find the "data: " line.
 	for _, l := range bytes.Split(line, []byte("\n")) {
 		l = bytes.TrimSpace(l)
 		if bytes.HasPrefix(l, []byte("data:")) {
@@ -78,23 +95,22 @@ func (st *StreamTranslator) translateFrame(frame []byte) ([][]byte, error) {
 		return st.emitClosing("end_turn")
 	}
 
-	// Parse the OpenAI streaming chunk.
 	var chunk openAIStreamChunk
 	if err := json.Unmarshal(line, &chunk); err != nil {
-		// Skip unparseable frames (T-4-06: malformed SSE frames).
 		return nil, nil
 	}
 	if len(chunk.Choices) == 0 {
 		return nil, nil
 	}
 
-	content := chunk.Choices[0].Delta.Content
+	delta := chunk.Choices[0].Delta
 	finishReason := chunk.Choices[0].FinishReason
 
 	var events [][]byte
 
-	// If content is non-empty and we haven't started yet, emit opening events.
-	if content != "" && !st.started {
+	// message_start — emitted lazily on the first chunk that carries either
+	// text content or a tool_call. message_start MUST precede every other event.
+	if !st.started && (delta.Content != "" || len(delta.ToolCalls) > 0) {
 		msgStart, err := formatSSEEvent("message_start", map[string]interface{}{
 			"type": "message_start",
 			"message": map[string]interface{}{
@@ -111,41 +127,102 @@ func (st *StreamTranslator) translateFrame(frame []byte) ([][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		blockStart, err := formatSSEEvent("content_block_start", map[string]interface{}{
-			"type":  "content_block_start",
-			"index": 0,
-			"content_block": map[string]interface{}{
-				"type": "text",
-				"text": "",
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, msgStart, blockStart)
+		events = append(events, msgStart)
 		st.started = true
 	}
 
-	// Emit content_block_delta if content is non-empty.
-	if content != "" {
-		delta, err := formatSSEEvent("content_block_delta", map[string]interface{}{
+	// Text delta: open text block on first non-empty content, then emit deltas.
+	if delta.Content != "" {
+		if !st.textOpen {
+			st.textIndex = st.nextIndex
+			st.nextIndex++
+			blockStart, err := formatSSEEvent("content_block_start", map[string]interface{}{
+				"type":  "content_block_start",
+				"index": st.textIndex,
+				"content_block": map[string]interface{}{
+					"type": "text",
+					"text": "",
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, blockStart)
+			st.textOpen = true
+		}
+		blockDelta, err := formatSSEEvent("content_block_delta", map[string]interface{}{
 			"type":  "content_block_delta",
-			"index": 0,
+			"index": st.textIndex,
 			"delta": map[string]interface{}{
 				"type": "text_delta",
-				"text": content,
+				"text": delta.Content,
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
-		events = append(events, delta)
+		events = append(events, blockDelta)
 	}
 
-	// If finish_reason is present and non-empty, emit closing sequence.
+	// Tool-call deltas. Each tool_call has its own .index in the OpenAI stream;
+	// we map that to an Anthropic content_block index.
+	for _, tc := range delta.ToolCalls {
+		// Close the text block (if open) before opening the first tool_use block
+		// at a higher index — Anthropic streams one block at a time per index.
+		if st.textOpen {
+			stopEv, err := formatSSEEvent("content_block_stop", map[string]interface{}{
+				"type":  "content_block_stop",
+				"index": st.textIndex,
+			})
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, stopEv)
+			st.textOpen = false
+		}
+
+		anthIdx, exists := st.toolIndexes[tc.Index]
+		if !exists {
+			anthIdx = st.nextIndex
+			st.nextIndex++
+			st.toolIndexes[tc.Index] = anthIdx
+		}
+		if !st.toolOpen[tc.Index] {
+			blockStart, err := formatSSEEvent("content_block_start", map[string]interface{}{
+				"type":  "content_block_start",
+				"index": anthIdx,
+				"content_block": map[string]interface{}{
+					"type":  "tool_use",
+					"id":    tc.ID,
+					"name":  tc.Function.Name,
+					"input": map[string]interface{}{},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, blockStart)
+			st.toolOpen[tc.Index] = true
+		}
+		if tc.Function.Arguments != "" {
+			blockDelta, err := formatSSEEvent("content_block_delta", map[string]interface{}{
+				"type":  "content_block_delta",
+				"index": anthIdx,
+				"delta": map[string]interface{}{
+					"type":         "input_json_delta",
+					"partial_json": tc.Function.Arguments,
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, blockDelta)
+		}
+	}
+
+	// Close on finish_reason.
 	if finishReason != nil && *finishReason != "" {
-		stopReason := translateFinishReason(*finishReason)
-		closing, err := st.emitClosing(stopReason)
+		closing, err := st.emitClosing(translateFinishReason(*finishReason))
 		if err != nil {
 			return nil, err
 		}
@@ -156,13 +233,41 @@ func (st *StreamTranslator) translateFrame(frame []byte) ([][]byte, error) {
 }
 
 func (st *StreamTranslator) emitClosing(stopReason string) ([][]byte, error) {
-	blockStop, err := formatSSEEvent("content_block_stop", map[string]interface{}{
-		"type":  "content_block_stop",
-		"index": 0,
-	})
-	if err != nil {
-		return nil, err
+	if st.closed {
+		return nil, nil
 	}
+	st.closed = true
+
+	var events [][]byte
+
+	// Close any still-open text block.
+	if st.textOpen {
+		stopEv, err := formatSSEEvent("content_block_stop", map[string]interface{}{
+			"type":  "content_block_stop",
+			"index": st.textIndex,
+		})
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, stopEv)
+		st.textOpen = false
+	}
+	// Close any still-open tool_use blocks, in OpenAI-tool-index order.
+	for openAIIdx, anthIdx := range st.toolIndexes {
+		if !st.toolOpen[openAIIdx] {
+			continue
+		}
+		stopEv, err := formatSSEEvent("content_block_stop", map[string]interface{}{
+			"type":  "content_block_stop",
+			"index": anthIdx,
+		})
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, stopEv)
+		st.toolOpen[openAIIdx] = false
+	}
+
 	msgDelta, err := formatSSEEvent("message_delta", map[string]interface{}{
 		"type": "message_delta",
 		"delta": map[string]interface{}{
@@ -180,7 +285,8 @@ func (st *StreamTranslator) emitClosing(stopReason string) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return [][]byte{blockStop, msgDelta, msgStop}, nil
+	events = append(events, msgDelta, msgStop)
+	return events, nil
 }
 
 func formatSSEEvent(eventType string, payload interface{}) ([]byte, error) {
