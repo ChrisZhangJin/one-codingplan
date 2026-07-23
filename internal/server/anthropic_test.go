@@ -410,7 +410,7 @@ func TestAnthropicPassthrough_NonStream(t *testing.T) {
 	defer upstream.Close()
 
 	seedAccessKey(t, db, "test-token-abc", true)
-	seedUpstream(t, db, "mimo", upstream.URL)
+	seedUpstream(t, db, "up1", upstream.URL)
 	p := buildPool(t, db, 10*time.Millisecond)
 	engine := buildServer(db, p).Engine()
 

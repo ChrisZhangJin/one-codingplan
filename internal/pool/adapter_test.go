@@ -89,7 +89,7 @@ func TestGetAdapter(t *testing.T) {
 		wantType string
 	}{
 		{"minimax", "minimax"},
-		{"kimi", "default"},
+		{"kimi", "kimi"},
 		{"", "default"},
 		{"unknown", "default"},
 	}
@@ -99,6 +99,10 @@ func TestGetAdapter(t *testing.T) {
 		case "minimax":
 			if _, ok := a.(MinimaxAdapter); !ok {
 				t.Errorf("GetAdapter(%q) = %T, want MinimaxAdapter", tt.provider, a)
+			}
+		case "kimi":
+			if _, ok := a.(KimiAdapter); !ok {
+				t.Errorf("GetAdapter(%q) = %T, want KimiAdapter", tt.provider, a)
 			}
 		case "default":
 			if _, ok := a.(DefaultAdapter); !ok {

@@ -285,7 +285,7 @@ func TestE2E_Anthropic_Passthrough_FormatField(t *testing.T) {
 
 	gormDB := setupTestDB(t)
 	seedAccessKey(t, gormDB, "e2e-token", true)
-	seedUpstream(t, gormDB, "mimo", upstream.URL)
+	seedUpstream(t, gormDB, "up1", upstream.URL)
 	p := buildPool(t, gormDB, 10*time.Millisecond)
 	ts := httptest.NewServer(buildServer(gormDB, p).Engine())
 	defer ts.Close()
@@ -591,8 +591,8 @@ func TestE2E_Admin_BlockKey_RejectsRequests(t *testing.T) {
 	resp2 := post(t, ts.URL, "/v1/messages", "block-test-token", anthropicReqBody(false))
 	body2, _ := io.ReadAll(resp2.Body)
 	resp2.Body.Close()
-	if resp2.StatusCode != 401 {
-		t.Errorf("after block: expected 401, got %d: %s", resp2.StatusCode, body2)
+	if resp2.StatusCode != 403 {
+		t.Errorf("after block: expected 403, got %d: %s", resp2.StatusCode, body2)
 	}
 }
 

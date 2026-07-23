@@ -244,10 +244,10 @@ func TestListKeys(t *testing.T) {
 		t.Fatal("key1 not found in response")
 	}
 
-	// Token must be masked
+	// List returns the raw token so the portal can copy it; masking is client-side.
 	tok := k1resp["token"].(string)
-	if !containsMask(tok) {
-		t.Errorf("expected masked token, got %q", tok)
+	if tok != "ocp-token-aaa" {
+		t.Errorf("expected raw token, got %q", tok)
 	}
 
 	// Usage totals
@@ -257,15 +257,6 @@ func TestListKeys(t *testing.T) {
 	if k1resp["usage_total_output"] != float64(130) {
 		t.Errorf("expected usage_total_output=130, got %v", k1resp["usage_total_output"])
 	}
-}
-
-func containsMask(s string) bool {
-	for i := 0; i < len(s)-2; i++ {
-		if s[i] == '*' && s[i+1] == '*' && s[i+2] == '*' {
-			return true
-		}
-	}
-	return false
 }
 
 func TestGetKey(t *testing.T) {
@@ -290,8 +281,8 @@ func TestGetKey(t *testing.T) {
 		t.Errorf("expected id=get-k1, got %v", resp["id"])
 	}
 	tok := resp["token"].(string)
-	if !containsMask(tok) {
-		t.Errorf("expected masked token, got %q", tok)
+	if tok != "ocp-token-get" {
+		t.Errorf("expected raw token, got %q", tok)
 	}
 	if resp["usage_total_input"] != float64(50) {
 		t.Errorf("expected usage_total_input=50, got %v", resp["usage_total_input"])
