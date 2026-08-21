@@ -835,3 +835,89 @@ func TestRelay_SkipsAnthropicOnlyUpstream(t *testing.T) {
 		t.Errorf("openai upstream was never called")
 	}
 }
+
+// Anthropic clients authenticate with x-api-key rather than Authorization.
+func TestRelay_Auth_XApiKey(t *testing.T) {
+	db := setupTestDB(t)
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer fake.Close()
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstream(t, db, "up1", fake.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewReader(chatReqBody(false)))
+	req.Header.Set("x-api-key", "test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 with x-api-key auth, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRelay_Auth_XApiKey_Invalid(t *testing.T) {
+	db := setupTestDB(t)
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called")
+		w.WriteHeader(200)
+	}))
+	defer fake.Close()
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstream(t, db, "up1", fake.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewReader(chatReqBody(false)))
+	req.Header.Set("x-api-key", "bad-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// The client's ocp key must never be forwarded to an upstream. OpenAI relay
+// paths only overwrite Authorization, so x-api-key has to be stripped on clone.
+func TestRelay_ClientXApiKeyNotForwarded(t *testing.T) {
+	db := setupTestDB(t)
+	var gotXAPIKey, gotAuth string
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXAPIKey = r.Header.Get("x-api-key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer fake.Close()
+	seedAccessKey(t, db, "test-token-abc", true)
+	seedUpstream(t, db, "up1", fake.URL)
+	p := buildPool(t, db, 10*time.Millisecond)
+	engine := buildServer(db, p).Engine()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewReader(chatReqBody(false)))
+	req.Header.Set("x-api-key", "test-token-abc")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotXAPIKey != "" {
+		t.Errorf("client x-api-key leaked to upstream: %q", gotXAPIKey)
+	}
+	if gotAuth == "Bearer test-token-abc" {
+		t.Errorf("client token leaked via Authorization: %q", gotAuth)
+	}
+}

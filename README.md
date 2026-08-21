@@ -152,6 +152,10 @@ curl -X POST http://localhost:9189/api/keys/<id>/unblock \
 
 ### Proxy API (using an access key)
 
+Access keys are accepted in either `Authorization: Bearer <key>` or `x-api-key: <key>`,
+so both OpenAI-style and Anthropic-style clients work with the same key. When both
+headers are present, `Authorization` wins.
+
 ```bash
 # OpenAI-compatible
 curl http://localhost:9189/v1/chat/completions \
@@ -164,7 +168,7 @@ curl http://localhost:9189/v1/chat/completions \
 
 # Anthropic-compatible
 curl http://localhost:9189/v1/messages \
-  -H "Authorization: Bearer ocp-<your-key>" \
+  -H "x-api-key: ocp-<your-key>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4-5",

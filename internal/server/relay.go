@@ -46,6 +46,10 @@ func cloneHeaders(src http.Header) http.Header {
 	for _, h := range hopByHopHeaders {
 		dst.Del(h)
 	}
+	// The client's ocp key must never reach an upstream. Authorization is
+	// overwritten by every caller; x-api-key is not, so drop it here and let
+	// the Anthropic passthrough path set the upstream's own value after cloning.
+	dst.Del("X-Api-Key")
 	return dst
 }
 
@@ -58,12 +62,22 @@ func isHopByHop(header string) bool {
 	return false
 }
 
-// authMiddleware validates the bearer token against the access_keys table.
+// clientToken extracts the ocp access key from an incoming request. Anthropic
+// clients (Claude Code, the Anthropic SDKs) send "x-api-key"; OpenAI clients
+// send "Authorization: Bearer". Accept either so the same ocp key works from
+// both frontends. Authorization wins when both are present.
+func clientToken(c *gin.Context) string {
+	if token, ok := cutPrefix(c.GetHeader("Authorization"), "Bearer "); ok && token != "" {
+		return token
+	}
+	return c.GetHeader("X-Api-Key")
+}
+
+// authMiddleware validates the access key against the access_keys table.
 // Rejects with 401 for missing/unknown tokens, 403 for disabled or expired keys.
 func (s *Server) authMiddleware(c *gin.Context) {
-	auth := c.GetHeader("Authorization")
-	token, ok := cutPrefix(auth, "Bearer ")
-	if !ok || token == "" {
+	token := clientToken(c)
+	if token == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
