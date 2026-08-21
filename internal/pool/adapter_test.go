@@ -62,6 +62,44 @@ func TestMinimaxAdapterOpenAIURL(t *testing.T) {
 	}
 }
 
+func TestGLMAdapterAnthropicURL(t *testing.T) {
+	a := GLMAdapter{}
+	tests := []struct {
+		baseURL string
+		want    string
+	}{
+		{"https://open.bigmodel.cn", "https://open.bigmodel.cn/api/anthropic/v1/messages"},
+		{"https://open.bigmodel.cn/", "https://open.bigmodel.cn/api/anthropic/v1/messages"},
+		{"https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/anthropic/v1/messages"},
+		{"https://open.bigmodel.cn/api/paas/v4/", "https://open.bigmodel.cn/api/anthropic/v1/messages"},
+		{"https://open.bigmodel.cn/api/anthropic", "https://open.bigmodel.cn/api/anthropic/v1/messages"},
+	}
+	for _, tt := range tests {
+		got := a.AnthropicURL(tt.baseURL)
+		if got != tt.want {
+			t.Errorf("AnthropicURL(%q) = %q, want %q", tt.baseURL, got, tt.want)
+		}
+	}
+}
+
+func TestGLMAdapterOpenAIURL(t *testing.T) {
+	a := GLMAdapter{}
+	tests := []struct {
+		baseURL string
+		want    string
+	}{
+		{"https://open.bigmodel.cn", "https://open.bigmodel.cn/api/paas/v4/chat/completions"},
+		{"https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/paas/v4/chat/completions"},
+		{"https://open.bigmodel.cn/api/anthropic", "https://open.bigmodel.cn/api/paas/v4/chat/completions"},
+	}
+	for _, tt := range tests {
+		got := a.OpenAIURL(tt.baseURL)
+		if got != tt.want {
+			t.Errorf("OpenAIURL(%q) = %q, want %q", tt.baseURL, got, tt.want)
+		}
+	}
+}
+
 func TestNormalizeBaseURL(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -90,6 +128,7 @@ func TestGetAdapter(t *testing.T) {
 	}{
 		{"minimax", "minimax"},
 		{"kimi", "kimi"},
+		{"glm", "glm"},
 		{"", "default"},
 		{"unknown", "default"},
 	}
@@ -103,6 +142,10 @@ func TestGetAdapter(t *testing.T) {
 		case "kimi":
 			if _, ok := a.(KimiAdapter); !ok {
 				t.Errorf("GetAdapter(%q) = %T, want KimiAdapter", tt.provider, a)
+			}
+		case "glm":
+			if _, ok := a.(GLMAdapter); !ok {
+				t.Errorf("GetAdapter(%q) = %T, want GLMAdapter", tt.provider, a)
 			}
 		case "default":
 			if _, ok := a.(DefaultAdapter); !ok {

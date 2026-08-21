@@ -66,7 +66,8 @@ func TestMigrate_ProtocolFixup(t *testing.T) {
 		}
 	}
 
-	// Re-running Migrate should flip the three OpenAI-only names and leave the rest alone.
+	// Re-running Migrate should flip the OpenAI-only names and leave the rest
+	// alone. GLM stays on "both": it has a native Anthropic endpoint.
 	if err := Migrate(db); err != nil {
 		t.Fatalf("Migrate (rerun): %v", err)
 	}
@@ -74,7 +75,7 @@ func TestMigrate_ProtocolFixup(t *testing.T) {
 	wantProtocol := map[string]string{
 		"deepseek":  models.ProtocolOpenAI,
 		"qwen":      models.ProtocolOpenAI,
-		"glm":       models.ProtocolOpenAI,
+		"glm":       models.ProtocolBoth,
 		"kimi":      models.ProtocolBoth,
 		"my-claude": models.ProtocolBoth,
 	}

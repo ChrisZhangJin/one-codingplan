@@ -56,7 +56,10 @@ func Migrate(db *gorm.DB) error {
 	if err := db.Exec(
 		"UPDATE upstreams SET protocol = ? WHERE protocol = ? AND name IN ?",
 		models.ProtocolOpenAI, models.ProtocolBoth,
-		[]string{"qwen", "glm", "deepseek"},
+		// GLM is deliberately absent: it serves a native Anthropic endpoint
+		// (see pool.GLMAdapter), so pinning it to OpenAI would force
+		// /v1/messages through translation for no reason.
+		[]string{"qwen", "deepseek"},
 	).Error; err != nil {
 		return fmt.Errorf("migrate: fixup protocol: %w", err)
 	}

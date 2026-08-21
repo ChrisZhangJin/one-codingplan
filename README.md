@@ -21,7 +21,7 @@ ocp aggregates multiple AI coding plan credentials (Minimax, Kimi, Qwen, Mimo an
 | Kimi | `https://api.kimi.com/coding` | Requires `User-Agent: claude-code/1.0.0` |
 | Qwen | `https://dashscope.aliyuncs.com` | Alibaba Cloud |
 | DeepSeek | `https://api.deepseek.com` | Model: `deepseek-chat` |
-| GLM | `https://open.bigmodel.cn` | Zhipu AI |
+| GLM | `https://open.bigmodel.cn` | Zhipu AI. Speaks both protocols, from different paths — ocp routes Anthropic to `/api/anthropic/v1/messages` and OpenAI to `/api/paas/v4/chat/completions`. Pasting Zhipu's documented `.../api/paas/v4` base URL also works. |
 
 All providers are managed via the portal — no code changes needed to add or switch providers.
 
