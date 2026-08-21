@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  # docker/metadata-action lowercases this, which GHCR requires.
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      # The portal assets are built in the image, not here: internal/server
+      # embeds web_dist via //go:embed, and the tracked .gitkeep is enough to
+      # satisfy the embed so Go tests run without a Node toolchain.
+      - name: Test
+        run: go test -race ./...
+
+  image:
+    name: Build image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version constant is the source of truth; a tag that disagrees with
+      # it would publish an image whose `ocp --version` lies about itself.
+      - name: Check tag matches the version constant
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          src=$(sed -n 's/^const version = "\(.*\)"$/\1/p' cmd/ocp/root.go)
+          if [ -z "$src" ]; then
+            echo "::error::could not read the version constant from cmd/ocp/root.go"
+            exit 1
+          fi
+          if [ "$tag" != "$src" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} disagrees with cmd/ocp/root.go (const version = \"${src}\"). Bump one to match the other."
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches version ${src}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The Dockerfile defaults to goproxy.cn for local builds; runners are
+          # faster against the official proxy. npm is not overridden here --
+          # package-lock.json pins its tarballs to registry.npmmirror.com.
+          build-args: |
+            GOPROXY=https://proxy.golang.org,direct
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Proves the pushed artifact actually runs and reports the version we
+      # think it does, rather than only that it compiled.
+      - name: Smoke-test the pushed image
+        if: github.event_name != 'pull_request'
+        run: |
+          image=$(echo "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          ref="${image}@${{ steps.build.outputs.digest }}"
+          echo "running ${ref} --version"
+          got=$(docker run --rm "$ref" --version)
+          echo "$got"
+          want="ocp version $(sed -n 's/^const version = "\(.*\)"$/\1/p' cmd/ocp/root.go)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::image reported '${got}', expected '${want}'"
+            exit 1
+          fi
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Image published"
+            echo
+            echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
+            echo
+            echo "**Tags:**"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

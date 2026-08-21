@@ -108,6 +108,38 @@ Visit **http://localhost:9189** and sign in with your `admin_key`.
 
 ---
 
+## Container Images
+
+CI builds and publishes images to GitHub Container Registry on every push to
+`main` and every `v*` tag:
+
+| Trigger | Tags produced |
+|---------|---------------|
+| push to `main` | `main`, `sha-<short>` |
+| tag `v0.2.3` | `0.2.3`, `latest`, `sha-<short>` |
+| pull request | built only, never pushed |
+
+```bash
+docker pull ghcr.io/chriszhangjin/one-codingplan:latest
+```
+
+### Cutting a release
+
+The version lives in `cmd/ocp/root.go` and CI refuses to publish a tag that
+disagrees with it, so bump the constant first:
+
+```bash
+# 1. edit `const version` in cmd/ocp/root.go, then:
+git commit -am "chore: bump version to 0.2.3"
+git tag v0.2.3
+git push origin main --tags
+```
+
+CI then runs `go vet` and `go test -race`, builds the image, and smoke-tests the
+pushed artifact by running `ocp --version` inside it before the job goes green.
+
+---
+
 ## Admin API
 
 All admin endpoints require `Authorization: Bearer <admin_key>`.

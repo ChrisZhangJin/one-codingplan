@@ -7,6 +7,7 @@ web-build: web-install
 	cd web && npm run build
 	rm -rf internal/server/web_dist
 	cp -r web/dist internal/server/web_dist
+	touch internal/server/web_dist/.gitkeep
 
 web-clean:
 	rm -rf web/dist web/node_modules internal/server/web_dist

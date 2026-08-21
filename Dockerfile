@@ -1,15 +1,24 @@
+# Defaults suit builds from mainland China; CI overrides GOPROXY with the
+# official proxy, which is faster from GitHub-hosted runners.
+ARG GOPROXY=https://goproxy.cn,direct
+
 # Stage 1: Build the web portal
 FROM node:24-slim AS web-builder
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
+# No --registry override here on purpose: package-lock.json pins every tarball
+# to registry.npmmirror.com in its "resolved" fields, so npm fetches from there
+# regardless of the flag. Repointing CI at npmjs.org means regenerating the
+# lockfile, not passing an argument.
 RUN npm install --registry https://registry.npmmirror.com
 COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build the Go binary
 FROM golang:1.25-alpine AS go-builder
+ARG GOPROXY
 WORKDIR /app
-ENV GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
