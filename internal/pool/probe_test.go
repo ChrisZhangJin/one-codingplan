@@ -122,9 +122,8 @@ func TestProbe_StayUnavailableOnFailure(t *testing.T) {
 
 	p.ProbeAll()
 
-	_, err := p.Select(nil, "")
-	if err != pool.ErrNoUpstreams {
-		t.Errorf("expected ErrNoUpstreams after failed probe, got %v", err)
+	if isAvailable(p, id) {
+		t.Errorf("upstream should remain unavailable after failed probe")
 	}
 }
 
@@ -147,9 +146,8 @@ func TestProbe_StayUnavailableOnCreditsExhausted(t *testing.T) {
 
 	p.ProbeAll()
 
-	_, err := p.Select(nil, "")
-	if err != pool.ErrNoUpstreams {
-		t.Errorf("expected ErrNoUpstreams after credits-exhausted probe, got %v", err)
+	if isAvailable(p, id) {
+		t.Errorf("upstream should remain unavailable after credits-exhausted probe")
 	}
 }
 
@@ -353,7 +351,16 @@ func TestProbe_AnthropicFailureKeepsUnavailable(t *testing.T) {
 	p.Mark(id, false)
 	p.ProbeAll()
 
-	if _, err := p.Select(nil, models.ProtocolAnthropic); err == nil {
+	if isAvailable(p, id) {
 		t.Errorf("upstream should remain unavailable after failed probe")
 	}
+}
+
+func isAvailable(p *pool.Pool, id uint) bool {
+	for _, u := range p.List() {
+		if u.ID == id {
+			return u.Available
+		}
+	}
+	return false
 }

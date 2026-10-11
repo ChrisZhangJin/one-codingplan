@@ -44,10 +44,13 @@ func probeAnthropicModel(e entry) string {
 	return defaultAnthropicProbeModel
 }
 
+// probeInterval is how often unavailable upstreams are re-probed.
+const probeInterval = 5 * time.Minute
+
 // runProbeLoop runs on a goroutine started by StartProbeLoop.
-// It probes unavailable upstreams on an hourly ticker and stops when stopCh is closed.
+// It probes unavailable upstreams every probeInterval and stops when stopCh is closed.
 func (p *Pool) runProbeLoop() {
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(probeInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -59,12 +62,12 @@ func (p *Pool) runProbeLoop() {
 	}
 }
 
-// probeAll probes all currently unavailable upstreams and marks them available on success.
+// probeAll probes all enabled but currently unavailable upstreams and marks them available on success.
 func (p *Pool) probeAll() {
 	p.mu.RLock()
 	var unavailable []entry
 	for _, e := range p.entries {
-		if !e.available {
+		if e.enabled && !e.available {
 			unavailable = append(unavailable, e)
 		}
 	}

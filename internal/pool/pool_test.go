@@ -191,29 +191,38 @@ func TestSelect_SkipsUnavailable(t *testing.T) {
 	}
 }
 
+func TestSelect_AllUnavailableFallsBackToEnabled(t *testing.T) {
+	p := newTestPool(t, "a", "b")
+	for _, u := range p.List() {
+		p.Mark(u.ID, false)
+	}
+
+	// All marked unavailable but still enabled: Select retries one instead of failing.
+	if _, err := p.Select(nil, ""); err != nil {
+		t.Errorf("expected fallback to an enabled upstream, got %v", err)
+	}
+}
+
 func TestSelect_NoUpstreams(t *testing.T) {
 	p := newTestPool(t, "a", "b")
-
-	// Mark both unavailable by iterating to find their IDs
-	var ids []uint
-	seen := map[string]bool{}
-	for len(ids) < 2 {
-		e, err := p.Select(nil, "")
-		if err != nil {
-			break
-		}
-		if !seen[e.Name] {
-			seen[e.Name] = true
-			ids = append(ids, e.ID)
-		}
-	}
-	for _, id := range ids {
-		p.Mark(id, false)
-	}
+	p.SetEnabled("a", false)
+	p.SetEnabled("b", false)
 
 	_, err := p.Select(nil, "")
 	if err != pool.ErrNoUpstreams {
 		t.Errorf("expected ErrNoUpstreams, got %v", err)
+	}
+}
+
+func TestUpdateEntry_ResetsAvailability(t *testing.T) {
+	p := newTestPool(t, "a")
+	u := p.List()[0]
+	p.Mark(u.ID, false)
+
+	p.UpdateEntry(u.ID, u.Name, "https://example.com", "", "", "openai", false)
+
+	if !p.List()[0].Available {
+		t.Errorf("expected upstream to be available after config edit")
 	}
 }
 

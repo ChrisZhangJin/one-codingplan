@@ -87,7 +87,7 @@ func NewForTest(entries []UpstreamEntry) *Pool {
 	es := make([]entry, len(entries))
 	for i, e := range entries {
 		e.Protocol = normalizeProtocol(e.Protocol)
-		es[i] = entry{UpstreamEntry: e, available: true}
+		es[i] = entry{UpstreamEntry: e, available: true, enabled: true}
 	}
 	return &Pool{
 		entries: es,
@@ -156,6 +156,18 @@ func (p *Pool) Select(allowedUpstreams []string, wantProtocol string) (*Upstream
 			return &out, nil
 		}
 	}
+	// Last resort: every matching upstream has been marked unavailable by an
+	// earlier error. Retry an enabled one rather than failing outright, so a
+	// single bad response (or a since-fixed misconfiguration) cannot take the
+	// whole pool down until the next probe. Callers' seen-sets bound retries.
+	for i := 0; i < n; i++ {
+		p.idx = (p.idx + 1) % n
+		e := &p.entries[p.idx]
+		if e.enabled && (unrestricted || allowed[e.Name]) && matchesProtocol(e.Protocol, wantProtocol) {
+			out := e.UpstreamEntry
+			return &out, nil
+		}
+	}
 	return nil, ErrNoUpstreams
 }
 
@@ -198,7 +210,8 @@ func (p *Pool) List() []UpstreamInfo {
 	return result
 }
 
-// UpdateEntry updates the editable fields of the pool entry with the given ID.
+// UpdateEntry updates the editable fields of the pool entry with the given ID
+// and, if it is enabled, returns it to the rotation.
 // If apiKey is empty, the existing key is preserved.
 func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, protocol string, passthroughExtensions bool) {
 	p.mu.Lock()
@@ -213,6 +226,9 @@ func (p *Pool) UpdateEntry(id uint, name, baseURL, apiKey, modelOverride, protoc
 			p.entries[i].ModelOverride = modelOverride
 			p.entries[i].Protocol = normalizeProtocol(protocol)
 			p.entries[i].PassthroughExtensions = passthroughExtensions
+			// A config edit deserves a fresh attempt: clear any unavailable mark
+			// left by errors under the previous config.
+			p.entries[i].available = p.entries[i].enabled
 			return
 		}
 	}
